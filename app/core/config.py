@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import Literal
 
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, model_validator
 
 
 class Settings(BaseSettings):
@@ -101,6 +101,13 @@ class Settings(BaseSettings):
         "case_sensitive": False,
         "extra": "ignore",
     }
+
+    @model_validator(mode="after")
+    def auto_detect_backend(self) -> "Settings":
+        import os
+        if self.pinecone_api_key and "VECTOR_BACKEND" not in os.environ:
+            self.vector_backend = "pinecone"
+        return self
 
 
 @lru_cache()

@@ -91,6 +91,8 @@ async def predict(message, history, username):
             "Grounded Confidence": response.get("confidence", 0.0),
             "Cached": response.get("cached", False),
             "Timestamp": response.get("timestamp", ""),
+            "Vector Backend": orchestrator.retriever._backend if (orchestrator and hasattr(orchestrator, "retriever")) else "unknown",
+            "Total Chunks": orchestrator.retriever.count if (orchestrator and hasattr(orchestrator, "retriever")) else 0,
             "Verifier Verdict": {
                 "Supported": response.get("verdict", {}).get("supported", False) if response.get("verdict") is not None else False,
                 "Confidence": response.get("verdict", {}).get("confidence", 0.0) if response.get("verdict") is not None else 0.0,

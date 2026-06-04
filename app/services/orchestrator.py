@@ -8,6 +8,7 @@ retrieval -> generation -> verification -> caching -> response.
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
+from langsmith import traceable
 
 from app.core.config import get_settings
 from app.core.constants import REFUSAL_RESPONSE
@@ -40,6 +41,7 @@ class RAGOrchestrator:
         self.tracker = experiment_tracker
         self.settings = get_settings()
 
+    @traceable(name="answer_question")
     async def process_query(
         self,
         question: str,

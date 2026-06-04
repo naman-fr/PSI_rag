@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Protocol
+from langsmith import traceable
 
 from app.core.constants import VERIFICATION_PROMPT
 from app.schemas.responses import VerificationVerdict
@@ -29,6 +30,7 @@ class LLMService(Protocol):
         ...  # pragma: no cover
 
 
+@traceable(name="verify_answer")
 async def verify_answer(
     question: str,
     context: str,

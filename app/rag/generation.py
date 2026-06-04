@@ -12,6 +12,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from groq import Groq
+from langsmith import traceable
 
 from app.core.config import get_settings
 
@@ -67,6 +68,7 @@ class LLMService:
     # Public API
     # ------------------------------------------------------------------
 
+    @traceable(name="generate_grounded_answer")
     async def generate(
         self,
         messages: List[Dict[str, str]],

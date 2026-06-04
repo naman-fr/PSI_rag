@@ -12,6 +12,7 @@ from typing import List
 
 import numpy as np
 from google import genai
+from langsmith import traceable
 
 from app.core.config import get_settings
 from app.core.constants import EMBED_DOC_PREFIX, EMBED_QUERY_PREFIX
@@ -72,6 +73,7 @@ class EmbeddingService:
     # Public API
     # ------------------------------------------------------------------
 
+    @traceable(name="gemini_embed_query")
     def embed_query(self, text: str) -> np.ndarray:
         """Embed a single query string.
 
@@ -92,6 +94,7 @@ class EmbeddingService:
         vectors = self._embed_batch([prefixed])
         return vectors[0]
 
+    @traceable(name="gemini_embed_documents")
     def embed_documents(self, texts: List[str]) -> List[np.ndarray]:
         """Embed a list of document chunks in a single batch call.
 

@@ -12,6 +12,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TypedDict
+from langsmith import traceable
 
 import faiss
 import numpy as np
@@ -133,6 +134,7 @@ class FAISSRetriever:
     # Search
     # ------------------------------------------------------------------
 
+    @traceable(name="retrieve_context")
     def search(
         self,
         query_vector: np.ndarray,

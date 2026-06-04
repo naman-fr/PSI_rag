@@ -107,6 +107,13 @@ class Settings(BaseSettings):
         import os
         if self.pinecone_api_key and "VECTOR_BACKEND" not in os.environ:
             self.vector_backend = "pinecone"
+        if self.langsmith_api_key:
+            os.environ["LANGCHAIN_TRACING_V2"] = "true"
+            os.environ["LANGCHAIN_API_KEY"] = self.langsmith_api_key
+            os.environ["LANGCHAIN_PROJECT"] = self.langsmith_project
+        elif self.langsmith_tracing:
+            os.environ["LANGCHAIN_TRACING_V2"] = "true"
+            os.environ["LANGCHAIN_PROJECT"] = self.langsmith_project
         return self
 
 

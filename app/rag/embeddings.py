@@ -51,15 +51,20 @@ class EmbeddingService:
 
         Returns a list of L2-normalised numpy vectors.
         """
-        response = self._client.models.embed_content(
-            model=self._model,
-            contents=texts,
-        )
+        from concurrent.futures import ThreadPoolExecutor
 
-        vectors: List[np.ndarray] = []
-        for emb in response.embeddings:
+        def embed_one(text: str) -> np.ndarray:
+            response = self._client.models.embed_content(
+                model=self._model,
+                contents=text,
+            )
+            emb = response.embeddings[0]
             vec = np.array(emb.values, dtype=np.float32)
-            vectors.append(self._l2_normalize(vec))
+            return self._l2_normalize(vec)
+
+        # Use ThreadPoolExecutor to make parallel requests
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            vectors = list(executor.map(embed_one, texts))
 
         return vectors
 

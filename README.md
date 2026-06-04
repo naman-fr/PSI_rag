@@ -1,3 +1,15 @@
+---
+title: PSI RAG
+emoji: 💻
+colorFrom: indigo
+colorTo: pink
+sdk: gradio
+sdk_version: 6.16.0
+python_version: '3.13'
+app_file: app.py
+pinned: false
+---
+
 # 🚢 PSI RAG - Production Guardrailed Self-RAG System
 
 Production-grade document-grounded Self-RAG QA assistant for GlobalFreight Logistics carrier SLAs, tariffs, and delay policies.

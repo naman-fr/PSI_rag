@@ -50,7 +50,24 @@ class FAISSRetriever:
         self._backend = settings.vector_backend
 
         if self._backend == "pinecone":
-            from pinecone import Pinecone
+            try:
+                from pinecone import Pinecone
+            except Exception as e:
+                if "renamed from `pinecone-client` to `pinecone`" in str(e) or "pinecone-client" in str(e).lower():
+                    import subprocess
+                    import sys
+                    import importlib
+                    logger.warning("Detected broken pinecone-client package in retriever. Attempting programmatic uninstall and force-reinstall...")
+                    try:
+                        subprocess.check_call([sys.executable, "-m", "pip", "uninstall", "-y", "pinecone-client"])
+                        subprocess.check_call([sys.executable, "-m", "pip", "install", "--force-reinstall", "pinecone"])
+                        importlib.invalidate_caches()
+                        from pinecone import Pinecone
+                    except Exception as ex:
+                        logger.exception("Failed to programmatically fix pinecone packages", error=str(ex))
+                        raise e
+                else:
+                    raise e
             self._pc = Pinecone(api_key=settings.pinecone_api_key)
             self._pinecone_index = self._pc.Index(settings.pinecone_index_name)
 

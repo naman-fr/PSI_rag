@@ -31,6 +31,11 @@ async def init_rag():
     conversation_manager = ConversationManager(cache_backend)
     summary_manager = SummaryManager(cache_backend)
 
+    import app.main
+    app.main._cache_backend = cache_backend
+    app.main._conversation_manager = conversation_manager
+    app.main._summary_manager = summary_manager
+
     # Ingest documents on startup (so the Space has data immediately)
     from app.main import run_ingestion
     try:

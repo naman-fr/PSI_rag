@@ -15,9 +15,10 @@ logger = get_logger("gradio_app")
 
 # Global RAG orchestrator
 orchestrator = None
+init_error = None
 
 async def init_rag():
-    global orchestrator
+    global orchestrator, init_error
     settings = get_settings()
     logger.info("Initializing RAG pipeline for Hugging Face Space...")
 
@@ -40,24 +41,32 @@ async def init_rag():
         )
         logger.info("Ingestion complete!", documents=result["documents_loaded"], chunks=result["chunks_indexed"])
     except Exception as e:
+        import traceback
+        init_error = f"Ingestion Exception: {str(e)}\n{traceback.format_exc()}"
         logger.exception("Document ingestion failed during startup", error=str(e))
+        return
 
     # Retrieve components from app.main state
     import app.main
     orchestrator = app.main.get_orchestrator()
+    if not orchestrator:
+        init_error = "Orchestrator retrieved from app.main is None"
 
 # Run initialization
 try:
     # Ensure event loop runs cleanly
     asyncio.run(init_rag())
 except Exception as e:
+    import traceback
+    init_error = f"Startup Event Loop Exception: {str(e)}\n{traceback.format_exc()}"
     logger.exception("Error running RAG initialization on startup", error=str(e))
 
 
 async def predict(message, history, username):
-    global orchestrator
+    global orchestrator, init_error
     if not orchestrator:
-        return "System is not initialized. Please verify your environment and API keys.", {}
+        err_msg = f"System is not initialized. Please verify your environment and API keys.\n\nInitialization Error:\n{init_error or 'Unknown Error'}"
+        return err_msg, {}
 
     if not username:
         username = "hf_user"

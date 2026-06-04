@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     # --- API Keys (optional) ---
     pinecone_api_key: str = Field(default="", description="Pinecone API key")
+    pinecone_index_name: str = Field(default="self-rag-index", description="Pinecone index name")
     langsmith_api_key: str = Field(default="", description="LangSmith API key")
 
     # --- Model Configuration ---

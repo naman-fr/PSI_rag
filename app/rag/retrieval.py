@@ -30,7 +30,7 @@ class RetrievalResult(TypedDict):
 
 
 class FAISSRetriever:
-    """FAISS ``IndexFlatIP`` wrapper with metadata store.
+    """FAISS and Pinecone vector store retriever wrapper.
 
     Thread-safety for index mutations (``build_index``, ``save_index``,
     ``load_index``) is guaranteed via an :class:`asyncio.Lock`.
@@ -47,6 +47,12 @@ class FAISSRetriever:
         self._index: Optional[faiss.IndexFlatIP] = None
         self._metadata: List[Dict[str, Any]] = []
         self._lock = asyncio.Lock()
+        self._backend = settings.vector_backend
+
+        if self._backend == "pinecone":
+            from pinecone import Pinecone
+            self._pc = Pinecone(api_key=settings.pinecone_api_key)
+            self._pinecone_index = self._pc.Index(settings.pinecone_index_name)
 
     # ------------------------------------------------------------------
     # Index construction
@@ -57,7 +63,7 @@ class FAISSRetriever:
         vectors: np.ndarray,
         metadata: List[Dict[str, Any]],
     ) -> None:
-        """Build a new FAISS index from *vectors* and attach *metadata*.
+        """Build a new index from *vectors* and attach *metadata*.
 
         Parameters
         ----------
@@ -75,6 +81,22 @@ class FAISSRetriever:
             raise ValueError(
                 f"metadata length ({len(metadata)}) != vectors rows ({vectors.shape[0]})"
             )
+
+        if self._backend == "pinecone":
+            async with self._lock:
+                upsert_data = []
+                for idx, (vec, meta) in enumerate(zip(vectors, metadata)):
+                    chunk_meta = dict(meta)
+                    chunk_meta["text"] = meta.get("text", "")
+                    chunk_id = meta.get("chunk_id", f"chunk_{idx}")
+                    upsert_data.append((str(chunk_id), vec.tolist(), chunk_meta))
+                
+                batch_size = 100
+                for i in range(0, len(upsert_data), batch_size):
+                    batch = upsert_data[i:i+batch_size]
+                    self._pinecone_index.upsert(vectors=batch)
+            logger.info("Upserted %d vectors to Pinecone index", vectors.shape[0])
+            return
 
         async with self._lock:
             index = faiss.IndexFlatIP(self._dimension)
@@ -111,13 +133,35 @@ class FAISSRetriever:
             Ranked results (highest score first), each containing
             ``score``, ``text``, and ``metadata``.
         """
-        if self._index is None or self._index.ntotal == 0:
-            logger.warning("search() called on empty index")
-            return []
-
         settings = get_settings()
         top_k = top_k or settings.top_k
         score_threshold = score_threshold if score_threshold is not None else settings.retrieval_score_threshold
+
+        if self._backend == "pinecone":
+            response = self._pinecone_index.query(
+                vector=query_vector.tolist(),
+                top_k=top_k,
+                include_metadata=True
+            )
+            results: List[RetrievalResult] = []
+            for match in response.matches:
+                score = match.score
+                if score < score_threshold:
+                    continue
+                meta = match.metadata or {}
+                text = meta.pop("text", "")
+                results.append(
+                    RetrievalResult(
+                        score=float(score),
+                        text=text,
+                        metadata=meta,
+                    )
+                )
+            return results
+
+        if self._index is None or self._index.ntotal == 0:
+            logger.warning("search() called on empty index")
+            return []
 
         qv = query_vector.astype(np.float32).reshape(1, -1)
         # Clamp top_k to index size.
@@ -157,6 +201,10 @@ class FAISSRetriever:
         path:
             Directory where index artefacts are written.
         """
+        if self._backend == "pinecone":
+            logger.info("Pinecone backend is cloud-managed; skipping local save_index")
+            return
+
         dir_path = Path(path)
         dir_path.mkdir(parents=True, exist_ok=True)
 
@@ -179,6 +227,10 @@ class FAISSRetriever:
         path:
             Directory containing ``index.faiss`` and ``metadata.json``.
         """
+        if self._backend == "pinecone":
+            logger.info("Pinecone backend is cloud-managed; index loaded automatically from remote")
+            return
+
         dir_path = Path(path)
         index_file = dir_path / "index.faiss"
         meta_file = dir_path / "metadata.json"
@@ -206,11 +258,19 @@ class FAISSRetriever:
     @property
     def is_ready(self) -> bool:
         """Return ``True`` if the index is populated and searchable."""
+        if self._backend == "pinecone":
+            return True
         return self._index is not None and self._index.ntotal > 0
 
     @property
     def count(self) -> int:
         """Number of vectors in the index."""
+        if self._backend == "pinecone":
+            try:
+                stats = self._pinecone_index.describe_index_stats()
+                return stats.total_vector_count
+            except Exception:
+                return 0
         if self._index is None:
             return 0
         return self._index.ntotal

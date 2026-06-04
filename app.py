@@ -108,8 +108,10 @@ async def predict(message, history, username):
 
         return response["answer"], metadata
     except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
         logger.exception("Error processing chat message", error=str(e))
-        return f"An error occurred: {str(e)}", {"error": str(e)}
+        return f"An error occurred: {str(e)}\n\nTraceback:\n{tb}", {"error": str(e), "traceback": tb}
 
 
 def make_ui():

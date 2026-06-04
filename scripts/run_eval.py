@@ -90,7 +90,7 @@ async def run_eval(mock_mode: bool = False):
             from app.main import run_ingestion
             await run_ingestion(source_dir=settings.docs_dir)
 
-        retriever.load_index(index_path)
+        await retriever.load_index(index_path)
         llm_service = LLMService()
 
     orchestrator = RAGOrchestrator(

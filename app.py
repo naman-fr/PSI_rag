@@ -104,7 +104,7 @@ async def predict(message, history, username):
 
 
 def make_ui():
-    with gr.Blocks(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="indigo")) as demo:
+    with gr.Blocks() as demo:
         gr.Markdown(
             """
             # 🚢 PSI RAG: Production Guardrailed Self-RAG
@@ -132,8 +132,11 @@ def make_ui():
         
         # When user submits message
         async def user_respond(message, chat_history, user):
+            if chat_history is None:
+                chat_history = []
             bot_msg, trace = await predict(message, chat_history, user)
-            chat_history.append((message, bot_msg))
+            chat_history.append({"role": "user", "content": message})
+            chat_history.append({"role": "assistant", "content": bot_msg})
             
             # Format sources markdown
             sources = trace.get("Retrieved Sources", [])
@@ -155,4 +158,4 @@ def make_ui():
 demo = make_ui()
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="indigo"))

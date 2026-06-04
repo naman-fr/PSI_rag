@@ -63,13 +63,13 @@ async def run_ingestion(source_dir: str, force_reindex: bool = False) -> dict:
         raise FileNotFoundError(f"No markdown documents found in {source}")
 
     # Index
-    result = index_documents(records, embedding_service, retriever)
+    result = await index_documents(records, embedding_service, retriever)
 
     # Save index
     from pathlib import Path
 
     Path(settings.index_dir).mkdir(parents=True, exist_ok=True)
-    retriever.save_index(f"{settings.index_dir}/faiss.index")
+    await retriever.save_index(f"{settings.index_dir}/faiss.index")
 
     # Build orchestrator with the new retriever
     from app.rag.generation import LLMService
@@ -139,7 +139,7 @@ async def lifespan(app: FastAPI):
             global _orchestrator
             embedding_service = EmbeddingService()
             retriever = FAISSRetriever(dimension=settings.embed_dimension)
-            retriever.load_index(index_path)
+            await retriever.load_index(index_path)
             llm_service = LLMService()
 
             _orchestrator = RAGOrchestrator(

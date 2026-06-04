@@ -16,9 +16,10 @@ from app.utils.json_parser import parse_json_object
 
 logger = logging.getLogger(__name__)
 
-# Truncation limits for the verification payload (token savings).
-_MAX_CONTEXT_CHARS: int = 800
-_MAX_ANSWER_CHARS: int = 400
+# Truncation limits for the verification payload.
+# Set generously to ensure the verifier sees the full context and answer.
+_MAX_CONTEXT_CHARS: int = 4000
+_MAX_ANSWER_CHARS: int = 2000
 
 
 class LLMService(Protocol):

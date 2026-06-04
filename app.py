@@ -72,29 +72,29 @@ async def predict(message, history, username):
 
         # Build detailed trace metadata
         metadata = {
-            "Trace ID": response["trace_id"],
-            "Routing Mode": response["mode"],
-            "Grounded Confidence": response["confidence"],
-            "Cached": response["cached"],
-            "Timestamp": response["timestamp"],
+            "Trace ID": response.get("trace_id", ""),
+            "Routing Mode": response.get("mode", ""),
+            "Grounded Confidence": response.get("confidence", 0.0),
+            "Cached": response.get("cached", False),
+            "Timestamp": response.get("timestamp", ""),
             "Verifier Verdict": {
-                "Supported": response["verdict"].get("supported", False),
-                "Confidence": response["verdict"].get("confidence", 0.0),
-                "Reasoning": response["verdict"].get("reason", "")
+                "Supported": response.get("verdict", {}).get("supported", False) if response.get("verdict") is not None else False,
+                "Confidence": response.get("verdict", {}).get("confidence", 0.0) if response.get("verdict") is not None else 0.0,
+                "Reasoning": response.get("verdict", {}).get("reason", "") if response.get("verdict") is not None else ""
             },
             "Token Usage": {
-                "Prompt Tokens": response["usage"].get("prompt_tokens", 0),
-                "Completion Tokens": response["usage"].get("completion_tokens", 0),
-                "Total Tokens": response["usage"].get("total_tokens", 0)
+                "Prompt Tokens": response.get("usage", {}).get("prompt_tokens", 0) if response.get("usage") is not None else 0,
+                "Completion Tokens": response.get("usage", {}).get("completion_tokens", 0) if response.get("usage") is not None else 0,
+                "Total Tokens": response.get("usage", {}).get("total_tokens", 0) if response.get("usage") is not None else 0
             },
             "Retrieved Sources": [
                 {
-                    "Source": s.get("source"),
-                    "Chunk ID": s.get("chunk_id"),
-                    "Score": s.get("score"),
-                    "Preview": s.get("text_preview")
-                } for s in response.get("sources", [])
-            ]
+                    "Source": s.get("source", "unknown") if s else "unknown",
+                    "Chunk ID": s.get("chunk_id", 0) if s else 0,
+                    "Score": s.get("score", 0.0) if s else 0.0,
+                    "Preview": s.get("text_preview", "") if s else ""
+                } for s in response.get("sources", []) if isinstance(s, dict)
+            ] if response.get("sources") is not None else []
         }
 
         return response["answer"], metadata

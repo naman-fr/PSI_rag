@@ -234,7 +234,7 @@ class RAGOrchestrator:
         # --- Step 11: Build Source References ---
         sources = []
         for r in results[:3]:
-            meta = r.get("metadata", {})
+            meta = r.get("metadata") or {}
             sources.append({
                 "source": meta.get("source", "unknown"),
                 "chunk_id": meta.get("chunk_id", 0),

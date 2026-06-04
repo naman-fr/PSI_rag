@@ -56,7 +56,9 @@ class SummaryManager:
             return None
         try:
             data = json.loads(raw)
-            return data.get("summary")
+            if isinstance(data, dict):
+                return data.get("summary")
+            return None
         except (json.JSONDecodeError, TypeError):
             logger.warning("Corrupt summary for key=%s – returning None", key)
             return None

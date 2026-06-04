@@ -25,10 +25,11 @@ def _format_chunk_block(result: RetrievalResult, index: int) -> str:
         [source=DOC1_carrier_sla.md chunk=3 score=0.82]
         The carrier shall deliver…
     """
-    source = result["metadata"].get("source", "unknown")
-    chunk_id = result["metadata"].get("chunk_id", index)
-    score = result["score"]
-    text = result["text"]
+    meta = result.get("metadata") or {}
+    source = meta.get("source", "unknown")
+    chunk_id = meta.get("chunk_id", index)
+    score = result.get("score", 0.0)
+    text = result.get("text", "")
     return f"[source={source} chunk={chunk_id} score={score:.2f}]\n{text}"
 
 

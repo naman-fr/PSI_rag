@@ -101,11 +101,17 @@ class FAISSRetriever:
 
         if self._backend == "pinecone":
             async with self._lock:
+                try:
+                    self._pinecone_index.delete(delete_all=True)
+                    logger.info("Cleared all existing vectors from Pinecone index")
+                except Exception as clear_err:
+                    logger.warning("Failed to clear Pinecone index: %s", clear_err)
+
                 upsert_data = []
                 for idx, (vec, meta) in enumerate(zip(vectors, metadata)):
                     chunk_meta = dict(meta)
                     chunk_meta["text"] = meta.get("text", "")
-                    chunk_id = meta.get("chunk_id", f"chunk_{idx}")
+                    chunk_id = f"{meta.get('source', 'doc')}_chunk_{meta.get('chunk_id', idx)}"
                     upsert_data.append((str(chunk_id), vec.tolist(), chunk_meta))
                 
                 batch_size = 100

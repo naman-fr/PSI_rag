@@ -77,10 +77,15 @@ class MultimodalGenerator:
             context_len=len(context_block)
         )
 
-        try:
-            # Run in thread pool to prevent blocking FastAPI's main event loop
-            response = await asyncio.to_thread(
-                self._client.models.generate_content,
+        from tenacity import retry, stop_after_attempt, wait_random_exponential
+
+        @retry(
+            stop=stop_after_attempt(5),
+            wait=wait_random_exponential(multiplier=1, min=2, max=10),
+            reraise=True
+        )
+        def _call_generate():
+            return self._client.models.generate_content(
                 model=self._model,
                 contents=contents,
                 config={
@@ -89,6 +94,10 @@ class MultimodalGenerator:
                     "temperature": temperature,
                 }
             )
+
+        try:
+            # Run in thread pool to prevent blocking FastAPI's main event loop
+            response = await asyncio.to_thread(_call_generate)
 
             answer = response.text or ""
             

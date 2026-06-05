@@ -66,18 +66,27 @@ class VisualHallucinationChecker:
                 f"Generated Answer to Verify:\n{answer}\n"
             )
 
-            # Call Gemini with structured schema output
-            response = await asyncio.to_thread(
-                self._client.models.generate_content,
-                model=self._model,
-                contents=verification_payload,
-                config={
-                    "system_instruction": VERIFICATION_PROMPT,
-                    "response_mime_type": "application/json",
-                    "response_schema": VerificationResult,
-                    "temperature": 0.0,
-                }
+            from tenacity import retry, stop_after_attempt, wait_random_exponential
+
+            @retry(
+                stop=stop_after_attempt(5),
+                wait=wait_random_exponential(multiplier=1, min=2, max=10),
+                reraise=True
             )
+            def _call_generate():
+                return self._client.models.generate_content(
+                    model=self._model,
+                    contents=verification_payload,
+                    config={
+                        "system_instruction": VERIFICATION_PROMPT,
+                        "response_mime_type": "application/json",
+                        "response_schema": VerificationResult,
+                        "temperature": 0.0,
+                    }
+                )
+
+            # Call Gemini with structured schema output
+            response = await asyncio.to_thread(_call_generate)
 
             response_text = response.text or ""
             # Parse response JSON

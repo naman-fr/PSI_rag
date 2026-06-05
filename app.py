@@ -141,11 +141,11 @@ def make_ui():
     with gr.Blocks() as demo:
         gr.Markdown(
             """
-            # 🚢 GlobalFreight Logistics: Multimodal CV-RAG
-            ### Production-Grade Computer Vision QA Assistant
+            # 🏭 Industrial Visual Intelligence Assistant: QC & Defect Triage
+            ### Production-Grade Manufacturing QA & Compliance Assistant
             
-            This assistant is grounded in carrier SLAs, customs tariffs, delay policies, and **uploaded documents or cargo label images**.
-            It uses layout-aware OCR (via Gemini), multimodal embeddings (CLIP), visual taggers, dual FAISS search, and visual grounding verifiers.
+            This assistant is grounded in Standard Operating Procedures (SOPs), casting/welding defect taxonomies, repair manuals, and **uploaded inspection photos**.
+            It uses layout-aware OCR (via Gemini), multimodal embeddings (CLIP), visual taggers, dual FAISS search, and post-generation visual grounding verifiers.
             """
         )
         
@@ -153,10 +153,10 @@ def make_ui():
             with gr.Column(scale=3):
                 chatbot = gr.Chatbot(label="Chat History")
                 msg = gr.Textbox(
-                    label="Ask a question about the SLA policies, customs rules, or upload an image to query...",
-                    placeholder="E.g., What is the tariff code for the items in this invoice?"
+                    label="Ask a question about SOP-QC-08 defect classifications, welding guides, or upload an inspection photo...",
+                    placeholder="E.g., What is the severity classification for this welding undercut?"
                 )
-                image_input = gr.Image(label="Upload Document Image or Cargo Photo (Optional)", type="filepath")
+                image_input = gr.Image(label="Upload Inspection Photo (Optional)", type="filepath")
                 username = gr.Textbox(label="Username (for session isolation & memory cache)", value="guest_user")
                 clear = gr.ClearButton([msg, image_input, chatbot])
             

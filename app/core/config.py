@@ -28,6 +28,16 @@ class Settings(BaseSettings):
     embed_model: str = Field(default="gemini-embedding-2", description="Gemini embedding model")
     embed_dimension: int = Field(default=3072, description="Embedding vector dimension")
 
+    # --- Vision & Multimodal Configuration ---
+    vision_model: str = Field(default="gemini-2.5-flash", description="Primary multimodal model")
+    vision_embed_model: str = Field(default="multimodal-embedding-001", description="Gemini multimodal embedding model")
+    vision_embed_dimension: int = Field(default=1408, description="Dimension for multimodal embeddings")
+    local_clip_model: str = Field(default="laion/CLIP-ViT-B-32-laion2B-s34B-b79K", description="Local fallback CLIP model")
+    max_image_size_mb: int = Field(default=10, description="Max allowed image size in MB")
+    max_image_dimension: int = Field(default=1024, description="Max resolution for vision input")
+    max_image_tiles: int = Field(default=9, description="Maximum number of grid tiles to process")
+    tile_size: int = Field(default=512, description="Image grid tile size")
+
     # --- Retrieval Settings ---
     top_k: int = Field(default=5, ge=1, le=20, description="Number of chunks to retrieve")
     retrieval_score_threshold: float = Field(

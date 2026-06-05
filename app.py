@@ -201,4 +201,4 @@ def make_ui():
 demo = make_ui()
 
 if __name__ == "__main__":
-    demo.launch(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="indigo"))
+    demo.launch(theme=gr.themes.Soft(primary_hue="blue", secondary_hue="indigo"), show_error=True)

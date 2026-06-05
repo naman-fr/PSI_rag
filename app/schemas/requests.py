@@ -26,6 +26,14 @@ class ChatRequest(BaseModel):
         max_length=2000,
         description="User question to answer",
     )
+    image_id: Optional[str] = Field(
+        default=None,
+        description="Optional pre-uploaded image ID for visual question answering",
+    )
+    image_url: Optional[str] = Field(
+        default=None,
+        description="Optional image URL for visual question answering",
+    )
 
 
 class IngestRequest(BaseModel):
@@ -48,3 +56,10 @@ class FeedbackRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=64)
     rating: str = Field(..., pattern=r"^(good|bad|neutral)$")
     notes: Optional[str] = Field(default=None, max_length=500)
+
+
+class ImageSearchRequest(BaseModel):
+    """Image search request."""
+
+    query: str = Field(..., description="Text query to find matching images")
+    top_k: Optional[int] = Field(default=3, ge=1, le=10)

@@ -6,12 +6,14 @@ from pydantic import BaseModel, Field
 
 
 class SourceReference(BaseModel):
-    """Reference to a source document chunk."""
+    """Reference to a source document chunk or visual chunk."""
 
-    source: str = Field(description="Source document filename")
-    chunk_id: int = Field(description="Chunk index within document")
+    source: str = Field(description="Source document filename or image ID")
+    chunk_id: int = Field(description="Chunk or tile index within document/image")
     score: float = Field(description="Retrieval similarity score")
-    text_preview: str = Field(default="", description="First 100 chars of chunk")
+    text_preview: str = Field(default="", description="First 100 chars of chunk or caption")
+    image_id: Optional[str] = Field(default=None, description="Optional associated image ID")
+    tile_index: Optional[int] = Field(default=None, description="Optional grid tile index")
 
 
 class VerificationVerdict(BaseModel):
@@ -34,7 +36,7 @@ class ChatResponse(BaseModel):
     """Full chat response with metadata."""
 
     trace_id: str = Field(description="Unique trace ID for this request")
-    mode: Literal["direct", "retrieval", "guardrail_refusal", "cached"] = Field(
+    mode: Literal["direct", "retrieval", "multimodal_retrieval", "guardrail_refusal", "cached"] = Field(
         description="Response generation mode"
     )
     answer: str = Field(description="The generated answer")
@@ -70,6 +72,7 @@ class ConversationMessage(BaseModel):
 
     role: Literal["user", "assistant"] = Field(description="Message role")
     content: str = Field(description="Message content")
+    image_id: Optional[str] = Field(default=None, description="Optional associated image ID")
     timestamp: str = Field(description="ISO timestamp")
 
 
@@ -80,3 +83,21 @@ class ConversationHistory(BaseModel):
     session_id: str
     messages: List[ConversationMessage] = Field(default_factory=list)
     summary: Optional[str] = Field(default=None, description="Compressed summary")
+
+
+class UploadImageResponse(BaseModel):
+    """Image ingestion / upload result."""
+
+    image_id: str = Field(description="Unique generated ID for the uploaded image")
+    ocr_text: str = Field(description="Extracted OCR text layout")
+    tags: List[str] = Field(description="Detected object descriptors and labels")
+    status: str = Field(description="Status message")
+
+
+class ImageSearchResult(BaseModel):
+    """Result from visual vector search."""
+
+    image_id: str = Field(description="ID of the matching image")
+    score: float = Field(description="Vector similarity score")
+    caption: str = Field(description="Visual description or layout text")
+    tags: List[str] = Field(description="Labels associated with this image")

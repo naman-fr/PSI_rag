@@ -67,6 +67,7 @@ class ConversationManager:
         session_id: str,
         role: str,
         content: str,
+        image_id: Optional[str] = None,
     ) -> None:
         """Append a message to the conversation.
 
@@ -80,6 +81,8 @@ class ConversationManager:
             ``"user"`` or ``"assistant"``.
         content:
             Message text.
+        image_id:
+            Optional image identifier associated with this message turn.
         """
         key = self._make_key(username, session_id)
         messages = await self._load(key)
@@ -87,12 +90,14 @@ class ConversationManager:
             {
                 "role": role,
                 "content": content,
+                "image_id": image_id,
                 "timestamp": time.time(),
             }
         )
         await self._save(key, messages)
         logger.debug(
-            "Conversation %s: added %s message (total=%d)", key, role, len(messages),
+            "Conversation %s: added %s message (total=%d, image_id=%s)",
+            key, role, len(messages), image_id,
         )
 
     async def get_recent_messages(

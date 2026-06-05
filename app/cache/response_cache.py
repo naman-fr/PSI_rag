@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 _RESPONSE_PREFIX = "resp"
 
 
-def make_cache_key(query: str, prompt_version: str = "v1") -> str:
-    """Derive a deterministic cache key from *query* and *prompt_version*.
+def make_cache_key(query: str, image_id: Optional[str] = None, prompt_version: str = "v1") -> str:
+    """Derive a deterministic cache key from *query*, *image_id*, and *prompt_version*.
 
     The key is a SHA-256 hex digest prefixed with ``resp:``.
 
@@ -30,10 +30,12 @@ def make_cache_key(query: str, prompt_version: str = "v1") -> str:
     ----------
     query:
         The user question (lowered & stripped before hashing).
+    image_id:
+        Optional uploaded image identifier.
     prompt_version:
         Version tag so cache auto-invalidates when the prompt template changes.
     """
-    normalised = f"{query.strip().lower()}::{prompt_version}"
+    normalised = f"{query.strip().lower()}::{image_id or ''}::{prompt_version}"
     digest = hashlib.sha256(normalised.encode("utf-8")).hexdigest()
     return f"{_RESPONSE_PREFIX}:{digest}"
 

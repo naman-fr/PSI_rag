@@ -52,10 +52,13 @@ async def run_ingestion(source_dir: str, force_reindex: bool = False) -> dict:
 
     from app.rag.ingestion import load_markdown_documents, index_documents
     from app.rag.embeddings import EmbeddingService
-    from app.rag.retrieval import FAISSRetriever
+    from app.vision.retrieval.vector_search import DualRetriever
 
     embedding_service = EmbeddingService()
-    retriever = FAISSRetriever(dimension=settings.embed_dimension)
+    retriever = DualRetriever(
+        text_dimension=settings.embed_dimension,
+        visual_dimension=settings.vision_embed_dimension
+    )
 
     # Load documents
     records = load_markdown_documents(source)
@@ -128,18 +131,21 @@ async def lifespan(app: FastAPI):
     # Try to load existing index
     from pathlib import Path
 
-    index_path = f"{settings.index_dir}/faiss.index"
+    index_path = f"{settings.index_dir}/text_index.faiss"
     if Path(index_path).exists():
         try:
             from app.rag.embeddings import EmbeddingService
-            from app.rag.retrieval import FAISSRetriever
+            from app.vision.retrieval.vector_search import DualRetriever
             from app.rag.generation import LLMService
             from app.services.orchestrator import RAGOrchestrator
 
             global _orchestrator
             embedding_service = EmbeddingService()
-            retriever = FAISSRetriever(dimension=settings.embed_dimension)
-            await retriever.load_index(index_path)
+            retriever = DualRetriever(
+                text_dimension=settings.embed_dimension,
+                visual_dimension=settings.vision_embed_dimension
+            )
+            await retriever.load_indices(settings.index_dir)
             llm_service = LLMService()
 
             _orchestrator = RAGOrchestrator(

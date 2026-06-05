@@ -3,6 +3,7 @@ import sys
 import asyncio
 import gradio as gr
 from pathlib import Path
+from PIL import Image
 
 # Ensure project root is in path
 sys.path.append(str(Path(__file__).parent.absolute()))
@@ -20,7 +21,7 @@ init_error = None
 async def init_rag():
     global orchestrator, init_error
     settings = get_settings()
-    logger.info("Initializing RAG pipeline for Hugging Face Space...")
+    logger.info("Initializing Multimodal CV-RAG pipeline for Hugging Face Space...")
 
     # Set up cache backend (fallback to InMemory)
     from app.cache.redis_client import get_cache_backend
@@ -36,15 +37,15 @@ async def init_rag():
     app.main._conversation_manager = conversation_manager
     app.main._summary_manager = summary_manager
 
-    # Ingest documents on startup (so the Space has data immediately)
+    # Ingest document text on startup
     from app.main import run_ingestion
     try:
-        logger.info("Ingesting source documents on startup...")
+        logger.info("Ingesting source logistics documents on startup...")
         result = await run_ingestion(
             source_dir="rag_docs/rag_docs",
             force_reindex=True
         )
-        logger.info("Ingestion complete!", documents=result["documents_loaded"], chunks=result["chunks_indexed"])
+        logger.info("Text documents loaded successfully!", documents=result["documents_loaded"], chunks=result["chunks_indexed"])
     except Exception as e:
         import traceback
         init_error = f"Ingestion Exception: {str(e)}\n{traceback.format_exc()}"
@@ -59,7 +60,6 @@ async def init_rag():
 
 # Run initialization
 try:
-    # Ensure event loop runs cleanly
     asyncio.run(init_rag())
 except Exception as e:
     import traceback
@@ -67,7 +67,7 @@ except Exception as e:
     logger.exception("Error running RAG initialization on startup", error=str(e))
 
 
-async def predict(message, history, username):
+async def predict(message, image_path, history, username):
     global orchestrator, init_error
     if not orchestrator:
         err_msg = f"System is not initialized. Please verify your environment and API keys.\n\nInitialization Error:\n{init_error or 'Unknown Error'}"
@@ -76,13 +76,31 @@ async def predict(message, history, username):
     if not username:
         username = "hf_user"
 
+    raw_image = None
+    if image_path:
+        try:
+            raw_image = Image.open(image_path)
+            logger.info("Opened user uploaded image for VQA", path=image_path, size=raw_image.size)
+        except Exception as e:
+            logger.error("Failed to open uploaded image", path=image_path, error=str(e))
+            return f"Error opening uploaded image: {str(e)}", {}
+
     try:
-        # Process query through RAG pipeline
+        # Process query through multimodal RAG pipeline
         response = await orchestrator.process_query(
-            question=message,
+            question=message or "Describe this image and list its key fields.",
             username=username,
-            session_id=f"session_{username}"
+            session_id=f"session_{username}",
+            raw_image=raw_image
         )
+
+        # Retrieve cached features for trace info if available
+        cached_ocr = ""
+        cached_tags = []
+        if raw_image and hasattr(orchestrator, "image_feature_cache"):
+            # Image ID is derived or generated in process_query. We can check metadata in response
+            # Or get it from the trace details.
+            pass
 
         # Build detailed trace metadata
         metadata = {
@@ -91,8 +109,6 @@ async def predict(message, history, username):
             "Grounded Confidence": response.get("confidence", 0.0),
             "Cached": response.get("cached", False),
             "Timestamp": response.get("timestamp", ""),
-            "Vector Backend": orchestrator.retriever._backend if (orchestrator and hasattr(orchestrator, "retriever")) else "unknown",
-            "Total Chunks": orchestrator.retriever.count if (orchestrator and hasattr(orchestrator, "retriever")) else 0,
             "Verifier Verdict": {
                 "Supported": response.get("verdict", {}).get("supported", False) if response.get("verdict") is not None else False,
                 "Confidence": response.get("verdict", {}).get("confidence", 0.0) if response.get("verdict") is not None else 0.0,
@@ -106,7 +122,7 @@ async def predict(message, history, username):
             "Retrieved Sources": [
                 {
                     "Source": s.get("source", "unknown") if s else "unknown",
-                    "Chunk ID": s.get("chunk_id", 0) if s else 0,
+                    "Chunk/Tile ID": s.get("chunk_id", 0) if s else 0,
                     "Score": s.get("score", 0.0) if s else 0.0,
                     "Preview": s.get("text_preview", "") if s else ""
                 } for s in response.get("sources", []) if isinstance(s, dict)
@@ -125,11 +141,11 @@ def make_ui():
     with gr.Blocks() as demo:
         gr.Markdown(
             """
-            # 🚢 PSI RAG: Production Guardrailed Self-RAG
-            ### GlobalFreight Logistics Document QA Assistant
+            # 🚢 GlobalFreight Logistics: Multimodal CV-RAG
+            ### Production-Grade Computer Vision QA Assistant
             
-            This assistant is grounded in carrier SLA agreements, customs tariffs, and shipment delay policies.
-            It uses a 10-layer guardrail stack to prevent jailbreaks, small-talk routing, hallucination verification, and multi-level caching.
+            This assistant is grounded in carrier SLAs, customs tariffs, delay policies, and **uploaded documents or cargo label images**.
+            It uses layout-aware OCR (via Gemini), multimodal embeddings (CLIP), visual taggers, dual FAISS search, and visual grounding verifiers.
             """
         )
         
@@ -137,38 +153,47 @@ def make_ui():
             with gr.Column(scale=3):
                 chatbot = gr.Chatbot(label="Chat History")
                 msg = gr.Textbox(
-                    label="Ask a question about SLA, delay policies, or customs tariffs...",
-                    placeholder="What is the transit time for Delhi to New York under Gold standard?"
+                    label="Ask a question about the SLA policies, customs rules, or upload an image to query...",
+                    placeholder="E.g., What is the tariff code for the items in this invoice?"
                 )
+                image_input = gr.Image(label="Upload Document Image or Cargo Photo (Optional)", type="filepath")
                 username = gr.Textbox(label="Username (for session isolation & memory cache)", value="guest_user")
-                clear = gr.ClearButton([msg, chatbot])
+                clear = gr.ClearButton([msg, image_input, chatbot])
             
             with gr.Column(scale=2):
-                gr.Markdown("### 🔍 Live Request Trace")
+                gr.Markdown("### 🔍 Live Multimodal Trace")
                 trace_json = gr.JSON(label="Metadata & Token Usage")
-                sources_md = gr.Markdown(label="Retrieved Source Chunks")
+                sources_md = gr.Markdown(label="Retrieved Source Chunks & Visual Matches")
         
         # When user submits message
-        async def user_respond(message, chat_history, user):
+        async def user_respond(message, image_path, chat_history, user):
             if chat_history is None:
                 chat_history = []
-            bot_msg, trace = await predict(message, chat_history, user)
-            chat_history.append({"role": "user", "content": message})
+            
+            # Formulate user query display text
+            user_text = message or ""
+            if image_path:
+                img_name = Path(image_path).name
+                user_text = f"🖼️ [Uploaded: {img_name}] {user_text}".strip()
+
+            bot_msg, trace = await predict(message, image_path, chat_history, user)
+            
+            chat_history.append({"role": "user", "content": user_text})
             chat_history.append({"role": "assistant", "content": bot_msg})
             
             # Format sources markdown
             sources = trace.get("Retrieved Sources", [])
             sources_text = "#### Retrieved Context:\n"
             if not sources:
-                sources_text += "*No document chunks retrieved for this mode (direct smalltalk/refusal)*"
+                sources_text += "*No references retrieved (direct smalltalk, query safety refusal, or direct image description)*"
             else:
                 for idx, src in enumerate(sources):
-                    sources_text += f"**Chunk {idx+1} ({src['Source']})** - Similarity: `{src['Score']:.3f}`\n"
+                    sources_text += f"**Source {idx+1} ({src['Source']})** - Similarity: `{src['Score']:.3f}`\n"
                     sources_text += f"> *{src['Preview']}...*\n\n"
             
-            return "", chat_history, trace, sources_text
+            return "", None, chat_history, trace, sources_text
             
-        msg.submit(user_respond, [msg, chatbot, username], [msg, chatbot, trace_json, sources_md])
+        msg.submit(user_respond, [msg, image_input, chatbot, username], [msg, image_input, chatbot, trace_json, sources_md])
         
     return demo
 

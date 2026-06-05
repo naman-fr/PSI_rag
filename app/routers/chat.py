@@ -26,6 +26,8 @@ async def chat(request: ChatRequest):
             question=request.question,
             username=request.username,
             session_id=request.session_id,
+            image_id=request.image_id,
+            image_url=request.image_url,
         )
         return ChatResponse(
             trace_id=result["trace_id"],

@@ -52,6 +52,7 @@ class EmbeddingService:
 
         Returns a list of L2-normalised numpy vectors.
         """
+        from google.genai import types
         from tenacity import retry, stop_after_attempt, wait_random_exponential
 
         @retry(
@@ -62,7 +63,10 @@ class EmbeddingService:
         def _call_api():
             return self._client.models.embed_content(
                 model=self._model,
-                contents=texts,
+                contents=[
+                    types.Content(parts=[types.Part.from_text(text=t)])
+                    for t in texts
+                ],
             )
 
         response = _call_api()

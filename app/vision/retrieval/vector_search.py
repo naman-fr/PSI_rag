@@ -61,7 +61,7 @@ class DualRetriever:
         if vectors.ndim != 2 or vectors.shape[1] != self._text_dim:
             raise ValueError(f"Expected vectors of shape (n, {self._text_dim}), got {vectors.shape}")
         if len(metadata) != vectors.shape[0]:
-            raise ValueError(f"metadata size mismatch")
+            raise ValueError(f"metadata size mismatch: len(metadata)={len(metadata)}, vectors.shape[0]={vectors.shape[0]}")
 
         async with self._lock:
             index = faiss.IndexFlatIP(self._text_dim)

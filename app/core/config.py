@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     embed_dimension: int = Field(default=3072, description="Embedding vector dimension")
 
     # --- Vision & Multimodal Configuration ---
-    vision_model: str = Field(default="gemini-2.5-flash", description="Primary multimodal model")
+    vision_model: str = Field(default="gemini-1.5-flash", description="Primary multimodal model")
     vision_embed_model: str = Field(default="gemini-embedding-2", description="Gemini multimodal embedding model")
     vision_embed_dimension: int = Field(default=3072, description="Dimension for multimodal embeddings")
     local_clip_model: str = Field(default="laion/CLIP-ViT-B-32-laion2B-s34B-b79K", description="Local fallback CLIP model")

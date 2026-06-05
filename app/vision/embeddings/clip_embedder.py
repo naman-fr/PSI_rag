@@ -53,11 +53,21 @@ class MultimodalEmbedder:
     @traceable(name="embed_text_multimodal")
     def embed_text(self, text: str) -> np.ndarray:
         """Generate a 1D embedding vector for text."""
-        try:
-            response = self._client.models.embed_content(
+        from tenacity import retry, stop_after_attempt, wait_random_exponential
+
+        @retry(
+            stop=stop_after_attempt(5),
+            wait=wait_random_exponential(multiplier=1, min=2, max=10),
+            reraise=True
+        )
+        def _call_api():
+            return self._client.models.embed_content(
                 model=self._model,
                 contents=text,
             )
+
+        try:
+            response = _call_api()
             val = response.embeddings[0].values
             vec = np.array(val, dtype=np.float32)
             return self._l2_normalize(vec)
@@ -68,15 +78,25 @@ class MultimodalEmbedder:
     @traceable(name="embed_image_multimodal")
     def embed_image(self, img: Image.Image) -> np.ndarray:
         """Generate a 1D embedding vector for a PIL Image."""
-        try:
-            # Check if image is in correct mode
-            if img.mode not in ("RGB", "L"):
-                img = img.convert("RGB")
-            
-            response = self._client.models.embed_content(
+        from tenacity import retry, stop_after_attempt, wait_random_exponential
+
+        # Check if image is in correct mode
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+
+        @retry(
+            stop=stop_after_attempt(5),
+            wait=wait_random_exponential(multiplier=1, min=2, max=10),
+            reraise=True
+        )
+        def _call_api():
+            return self._client.models.embed_content(
                 model=self._model,
                 contents=img,
             )
+
+        try:
+            response = _call_api()
             val = response.embeddings[0].values
             vec = np.array(val, dtype=np.float32)
             return self._l2_normalize(vec)

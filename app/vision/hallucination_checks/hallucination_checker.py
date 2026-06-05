@@ -14,9 +14,10 @@ from langsmith import traceable
 
 from app.core.config import get_settings
 from app.core.constants import VERIFICATION_PROMPT
+from app.core.logging import get_logger
 from app.utils.json_parser import parse_json_object
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class VerificationResult(BaseModel):

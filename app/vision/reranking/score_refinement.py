@@ -7,8 +7,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 from app.vision.retrieval.vector_search import RetrievalResult
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def rerank_results(

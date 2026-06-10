@@ -141,9 +141,11 @@ class RAGOrchestrator:
 
         query_vector = self.embedding_service.embed_query(question)
 
+        # Retrieve a larger candidate pool to allow cross-document balancing in reranking
+        candidate_k = max(12, self.settings.top_k * 2)
         results = self.retriever.search(
             query_vector=query_vector,
-            top_k=self.settings.top_k,
+            top_k=candidate_k,
             score_threshold=self.settings.retrieval_score_threshold,
         )
 
@@ -225,17 +227,20 @@ class RAGOrchestrator:
             confidence_threshold=self.settings.verification_confidence_threshold,
         )
 
+        final_results = results
         if was_refused:
             # Try query rewrite + retry
-            final_answer, verdict = await self._retry_with_rewrite(
+            final_answer, verdict, retry_results = await self._retry_with_rewrite(
                 question, context, results, trace_id
             )
+            if retry_results:
+                final_results = retry_results
 
         confidence = float(verdict.get("confidence", 0.0))
 
         # --- Step 11: Build Source References ---
         sources = []
-        for r in results[:3]:
+        for r in final_results[:3]:
             meta = r.get("metadata") or {}
             sources.append({
                 "source": meta.get("source", "unknown"),
@@ -287,6 +292,7 @@ class RAGOrchestrator:
             verdict=verdict,
             usage=usage,
             timestamp=timestamp,
+            retrieved_contexts=[r.get("text", "") for r in final_results],
         )
 
         await cache_response(self.cache, cache_key, response, self.settings.cache_ttl_seconds)
@@ -352,11 +358,12 @@ class RAGOrchestrator:
         rewrite_obj = parse_json_object(rewrite_text)
         new_query = str(rewrite_obj.get("query", "")).strip() or question
 
-        # Re-retrieve
+        # Re-retrieve with a larger candidate pool
         query_vector = self.embedding_service.embed_query(new_query)
+        retry_candidate_k = max(12, self.settings.top_k * 2)
         retry_results = self.retriever.search(
             query_vector=query_vector,
-            top_k=max(3, self.settings.top_k),
+            top_k=retry_candidate_k,
             score_threshold=self.settings.retrieval_score_threshold,
         )
 
@@ -365,7 +372,11 @@ class RAGOrchestrator:
                 "supported": False,
                 "confidence": 0.0,
                 "reason": "no_retry_context",
-            }
+            }, []
+
+        # Rerank & Deduplicate with Cross-Document Correlation
+        from app.rag.reranking import rerank_results
+        retry_results = rerank_results(retry_results, top_k=self.settings.top_k)
 
         from app.rag.context import assemble_context
 
@@ -394,9 +405,9 @@ class RAGOrchestrator:
             and float(retry_verdict.get("confidence", 0.0))
             >= self.settings.verification_confidence_threshold
         ):
-            return retry_answer, retry_verdict
+            return retry_answer, retry_verdict, retry_results
 
-        return REFUSAL_RESPONSE, retry_verdict
+        return REFUSAL_RESPONSE, retry_verdict, retry_results
 
     def _build_response(
         self,
@@ -409,6 +420,7 @@ class RAGOrchestrator:
         verdict: dict = None,
         usage: dict = None,
         cached: bool = False,
+        retrieved_contexts: list = None,
     ) -> Dict[str, Any]:
         """Build a standardized response dict."""
         return {
@@ -422,4 +434,5 @@ class RAGOrchestrator:
             "usage": usage or {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
             "cached": cached,
             "timestamp": timestamp,
+            "retrieved_contexts": retrieved_contexts or [],
         }

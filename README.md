@@ -81,4 +81,7 @@ pytest tests/
 
 # Run 46 prototype evaluation cases
 python scripts/run_eval.py
+
+# Run Ragas metrics evaluation (faithfulness and answer relevancy)
+python scripts/run_ragas_eval.py --num-questions 5
 ```

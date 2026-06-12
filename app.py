@@ -201,8 +201,8 @@ def make_ui():
                     summary_md = gr.Markdown("### Aggregate Scores\n*No evaluation data loaded.*")
             
             df_table = gr.Dataframe(
-                headers=["user_input", "response", "faithfulness", "answer_relevancy"],
-                datatype=["str", "str", "number", "number"],
+                headers=["user_input", "response", "faithfulness", "answer_relevancy", "context_precision"],
+                datatype=["str", "str", "number", "number", "number"],
                 label="Detailed Ragas Score Breakdown"
             )
             
@@ -217,12 +217,13 @@ def make_ui():
                             data = json.load(f)
                         if data:
                             df = pd.DataFrame(data)
-                            f_avg = df["faithfulness"].mean()
-                            r_avg = df["answer_relevancy"].mean()
-                            summary = f"### Aggregate Scores\n- **Average Faithfulness:** `{f_avg:.4f}`\n- **Average Answer Relevancy:** `{r_avg:.4f}`"
+                            f_avg = df["faithfulness"].mean() if "faithfulness" in df.columns else 0.0
+                            r_avg = df["answer_relevancy"].mean() if "answer_relevancy" in df.columns else 0.0
+                            c_avg = df["context_precision"].mean() if "context_precision" in df.columns else 0.0
+                            summary = f"### Aggregate Scores\n- **Average Faithfulness:** `{f_avg:.4f}`\n- **Average Answer Relevancy:** `{r_avg:.4f}`\n- **Average Context Precision:** `{c_avg:.4f}`"
                             
                             # Clean up df columns for table representation if they exist
-                            cols_to_keep = ["user_input", "response", "faithfulness", "answer_relevancy"]
+                            cols_to_keep = ["user_input", "response", "faithfulness", "answer_relevancy", "context_precision"]
                             df_clean = df[[c for c in cols_to_keep if c in df.columns]]
                             return df_clean, summary, "Ready (Loaded last saved results)"
                     except Exception as e:
@@ -254,7 +255,7 @@ def make_ui():
                 logger.info(status_msg)
                 
                 try:
-                    df, f_avg, r_avg = await run_ragas_eval(
+                    df, f_avg, r_avg, c_avg = await run_ragas_eval(
                         mock_mode=is_mock,
                         questions_list=eval_questions
                     )
@@ -262,9 +263,9 @@ def make_ui():
                     if df is None:
                         return pd.DataFrame(), "### Aggregate Scores\n*No data was collected during evaluation.*", "Error: No RAG data collected"
                     
-                    summary = f"### Aggregate Scores ({'Mock Mode' if is_mock else 'Real Mode'})\n- **Average Faithfulness:** `{f_avg:.4f}`\n- **Average Answer Relevancy:** `{r_avg:.4f}`"
+                    summary = f"### Aggregate Scores ({'Mock Mode' if is_mock else 'Real Mode'})\n- **Average Faithfulness:** `{f_avg:.4f}`\n- **Average Answer Relevancy:** `{r_avg:.4f}`\n- **Average Context Precision:** `{c_avg:.4f}`"
                     
-                    cols_to_keep = ["user_input", "response", "faithfulness", "answer_relevancy"]
+                    cols_to_keep = ["user_input", "response", "faithfulness", "answer_relevancy", "context_precision"]
                     df_clean = df[[c for c in cols_to_keep if c in df.columns]]
                     
                     final_status = "Evaluation completed successfully (" + ("Mock" if is_mock else "Real") + " Mode)"

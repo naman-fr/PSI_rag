@@ -127,6 +127,21 @@ class GroqLangchainLLMWrapper(LangchainLLMWrapper):
             llm_output=results[0].llm_output if results else None,
             run=results[0].run if results else None
         )
+from ragas.embeddings.base import BaseRagasEmbeddings
+
+class RagasEmbeddingWrapper(BaseRagasEmbeddings):
+    """Custom wrapper for Ragas to use our working EmbeddingService."""
+    def __init__(self, embedding_service):
+        self.embedding_service = embedding_service
+        super().__init__()
+        
+    def embed_query(self, text: str) -> list[float]:
+        vec = self.embedding_service.embed_query(text)
+        return [float(x) for x in vec]
+        
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        vecs = self.embedding_service.embed_documents(texts)
+        return [[float(x) for x in v] for v in vecs]
 
 
 def _safe_float(val):
@@ -292,7 +307,7 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
 
     if not rag_samples:
         print("\nNo RAG retrieval queries collected. Check that your queries trigger 'retrieval' mode.")
-        return None, 0.0, 0.0
+        return None, 0.0, 0.0, 0.0
 
     print(f"\nCollected {len(rag_samples)} samples for Ragas evaluation.")
 
@@ -306,11 +321,13 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
         mock_df = pd.DataFrame(rag_samples)
         mock_df["faithfulness"] = [0.92 - (idx * 0.02) for idx in range(len(rag_samples))]
         mock_df["answer_relevancy"] = [0.95 - (idx * 0.01) for idx in range(len(rag_samples))]
+        mock_df["context_precision"] = [0.88 + (idx * 0.03) for idx in range(len(rag_samples))]
 
         result = MockEvaluationResult(
             scores={
                 "faithfulness": mock_df["faithfulness"].mean(),
                 "answer_relevancy": mock_df["answer_relevancy"].mean(),
+                "context_precision": mock_df["context_precision"].mean(),
             },
             df=mock_df
         )
@@ -322,7 +339,7 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
         from ragas.llms import llm_factory
         from ragas.embeddings.base import embedding_factory
         from ragas import SingleTurnSample, EvaluationDataset, aevaluate
-        from ragas.metrics import Faithfulness, AnswerRelevancy
+        from ragas.metrics import Faithfulness, AnswerRelevancy, LLMContextPrecisionWithoutReference
 
         # Initialize Google GenAI client for Ragas judge
         client = genai.Client(api_key=settings.gemini_api_key)
@@ -365,15 +382,13 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
                 client=client
             )
 
-        ragas_embeddings = embedding_factory(
-            provider="google",
-            client=client,
-            model="text-embedding-004"
-        )
+        # Wrap our own working embedding service
+        ragas_embeddings = RagasEmbeddingWrapper(embedding_service)
 
         # Instantiate metrics with proper dependencies
         faithfulness_metric = Faithfulness(llm=ragas_llm)
         answer_relevancy_metric = AnswerRelevancy(llm=ragas_llm, embeddings=ragas_embeddings)
+        context_precision_metric = LLMContextPrecisionWithoutReference(llm=ragas_llm)
 
         # Convert to Ragas SingleTurnSamples
         samples = []
@@ -400,7 +415,7 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
         # Run Ragas evaluate
         result = await aevaluate(
             dataset=dataset,
-            metrics=[faithfulness_metric, answer_relevancy_metric],
+            metrics=[faithfulness_metric, answer_relevancy_metric, context_precision_metric],
             run_config=run_config
         )
 
@@ -419,11 +434,18 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
     except Exception:
         r_val = None
 
+    try:
+        c_val = result['context_precision']
+    except Exception:
+        c_val = None
+
     f_avg = _safe_float(f_val)
     r_avg = _safe_float(r_val)
+    c_avg = _safe_float(c_val)
 
     print(f"Average Faithfulness Score:  {f_avg:.4f}")
     print(f"Average Answer Relevancy:    {r_avg:.4f}")
+    print(f"Average Context Precision:   {c_avg:.4f}")
     print("-" * 80)
 
     df = result.to_pandas()
@@ -433,7 +455,8 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
         print(f"A: {row['response'][:100]}...")
         f_row = _safe_float(row.get('faithfulness')) if hasattr(row, 'get') else _safe_float(row['faithfulness'])
         r_row = _safe_float(row.get('answer_relevancy')) if hasattr(row, 'get') else _safe_float(row['answer_relevancy'])
-        print(f"-> Faithfulness: {f_row:.2f} | Relevancy: {r_row:.2f}")
+        c_row = _safe_float(row.get('context_precision')) if hasattr(row, 'get') else _safe_float(row['context_precision'])
+        print(f"-> Faithfulness: {f_row:.2f} | Relevancy: {r_row:.2f} | Context Precision: {c_row:.2f}")
 
     # Save to disk
     output_dir = Path(__file__).parent.parent / "data"
@@ -445,7 +468,7 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
         json.dump(records, f, indent=2)
 
     print(f"\nResults successfully saved to data/ragas_eval_results.json")
-    return df, f_avg, r_avg
+    return df, f_avg, r_avg, c_avg
 
 
 if __name__ == "__main__":

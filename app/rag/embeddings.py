@@ -21,19 +21,56 @@ logger = logging.getLogger(__name__)
 
 
 class EmbeddingService:
-    """Produce embeddings via Google Gemini.
+    """Produce embeddings via Google Gemini with local fallback."""
 
-    Parameters
-    ----------
-    model:
-        Override the model name (defaults to ``Settings.embed_model``).
-    """
+    _local_embeddings = None
+    _fallback_active = None  # None: untested, True: fallback to local, False: use Gemini
 
     def __init__(self, model: str | None = None) -> None:
         settings = get_settings()
         self._model: str = model or settings.embed_model
         self._dimension: int = settings.embed_dimension
-        self._client = genai.Client(api_key=settings.gemini_api_key)
+
+        if EmbeddingService._fallback_active is None:
+            if not settings.gemini_api_key or settings.gemini_api_key in ["mock-gemini-key", "missing-key-placeholder", ""]:
+                EmbeddingService._fallback_active = True
+                logger.warning("Gemini API key is missing or placeholder. Falling back to local embeddings.")
+            else:
+                try:
+                    logger.info("Testing Gemini embedding API availability...")
+                    test_client = genai.Client(api_key=settings.gemini_api_key)
+                    test_client.models.embed_content(
+                        model=self._model,
+                        contents="test",
+                    )
+                    EmbeddingService._fallback_active = False
+                    logger.info("Gemini embedding API is available.")
+                except Exception as e:
+                    logger.warning(
+                        "Gemini embedding API test failed. Falling back to local embeddings.",
+                        error=str(e),
+                    )
+                    EmbeddingService._fallback_active = True
+
+        if EmbeddingService._fallback_active:
+            if EmbeddingService._local_embeddings is None:
+                logger.info(
+                    "Initializing local HuggingFaceEmbeddings (sentence-transformers/all-MiniLM-L6-v2)..."
+                )
+                from langchain_community.embeddings import HuggingFaceEmbeddings
+
+                EmbeddingService._local_embeddings = HuggingFaceEmbeddings(
+                    model_name="sentence-transformers/all-MiniLM-L6-v2"
+                )
+        else:
+            self._client = genai.Client(api_key=settings.gemini_api_key)
+
+    @property
+    def dimension(self) -> int:
+        """Return the vector dimension."""
+        if EmbeddingService._fallback_active:
+            return 384
+        return self._dimension
 
     # ------------------------------------------------------------------
     # Internal
@@ -73,12 +110,12 @@ class EmbeddingService:
     # Public API
     # ------------------------------------------------------------------
 
-    @traceable(name="gemini_embed_query")
+    @traceable(name="embed_query")
     def embed_query(self, text: str) -> np.ndarray:
         """Embed a single query string.
 
         The query is prefixed with the task-type prefix defined in
-        ``app.core.constants.EMBED_QUERY_PREFIX``.
+        ``app.core.constants.EMBED_QUERY_PREFIX`` (only for Gemini).
 
         Parameters
         ----------
@@ -90,15 +127,20 @@ class EmbeddingService:
         np.ndarray
             L2-normalised embedding vector of shape ``(embed_dimension,)``.
         """
+        if EmbeddingService._fallback_active:
+            res = EmbeddingService._local_embeddings.embed_query(text)
+            vec = np.array(res, dtype=np.float32)
+            return self._l2_normalize(vec)
+
         prefixed = f"{EMBED_QUERY_PREFIX}{text}"
         vectors = self._embed_batch([prefixed])
         return vectors[0]
 
-    @traceable(name="gemini_embed_documents")
+    @traceable(name="embed_documents")
     def embed_documents(self, texts: List[str]) -> List[np.ndarray]:
-        """Embed a list of document chunks in a single batch call.
+        """Embed a list of document chunks.
 
-        Each chunk is prefixed with ``EMBED_DOC_PREFIX``.
+        Each chunk is prefixed with ``EMBED_DOC_PREFIX`` (only for Gemini).
 
         Parameters
         ----------
@@ -112,6 +154,10 @@ class EmbeddingService:
         """
         if not texts:
             return []
+
+        if EmbeddingService._fallback_active:
+            res = EmbeddingService._local_embeddings.embed_documents(texts)
+            return [self._l2_normalize(np.array(v, dtype=np.float32)) for v in res]
 
         prefixed = [f"{EMBED_DOC_PREFIX}{t}" for t in texts]
 
@@ -130,3 +176,4 @@ class EmbeddingService:
             )
 
         return all_vectors
+

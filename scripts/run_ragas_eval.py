@@ -263,16 +263,18 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
             from app.rag.generation import LLMService
 
             embedding_service = EmbeddingService()
-            retriever = FAISSRetriever(dimension=settings.embed_dimension)
+            retriever = FAISSRetriever(dimension=embedding_service.dimension)
 
             # Load FAISS index
             index_path = f"{settings.index_dir}/faiss.index"
-            if not Path(index_path).exists():
-                logger.info("FAISS index not found. Running ingestion first...")
+            try:
+                if not Path(index_path).exists():
+                    raise FileNotFoundError("FAISS index file does not exist.")
+                await retriever.load_index(index_path)
+            except Exception as e:
+                logger.info(f"FAISS index load failed or not found ({e}). Running ingestion first...")
                 from app.main import run_ingestion
                 await run_ingestion(source_dir=settings.docs_dir)
-            else:
-                await retriever.load_index(index_path)
 
             llm_service = LLMService()
 

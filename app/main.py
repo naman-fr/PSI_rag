@@ -55,7 +55,7 @@ async def run_ingestion(source_dir: str, force_reindex: bool = False) -> dict:
     from app.rag.retrieval import FAISSRetriever
 
     embedding_service = EmbeddingService()
-    retriever = FAISSRetriever(dimension=settings.embed_dimension)
+    retriever = FAISSRetriever(dimension=embedding_service.dimension)
 
     # Load documents
     records = load_markdown_documents(source)
@@ -138,7 +138,7 @@ async def lifespan(app: FastAPI):
 
             global _orchestrator
             embedding_service = EmbeddingService()
-            retriever = FAISSRetriever(dimension=settings.embed_dimension)
+            retriever = FAISSRetriever(dimension=embedding_service.dimension)
             await retriever.load_index(index_path)
             llm_service = LLMService()
 

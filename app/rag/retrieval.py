@@ -44,11 +44,22 @@ class FAISSRetriever:
 
     def __init__(self, dimension: int | None = None) -> None:
         settings = get_settings()
-        self._dimension: int = dimension or settings.embed_dimension
+        
+        # Check if local fallback is active in EmbeddingService
+        from app.rag.embeddings import EmbeddingService
+        emb_service = EmbeddingService()
+        
+        if EmbeddingService._fallback_active:
+            self._dimension = dimension if dimension is not None else emb_service.dimension
+            self._backend = "faiss"
+            logger.info("EmbeddingService fallback is active. Overriding retriever to local FAISS with dimension %d.", self._dimension)
+        else:
+            self._dimension = dimension or settings.embed_dimension
+            self._backend = settings.vector_backend
+
         self._index: Optional[faiss.IndexFlatIP] = None
         self._metadata: List[Dict[str, Any]] = []
         self._lock = asyncio.Lock()
-        self._backend = settings.vector_backend
 
         if self._backend == "pinecone":
             try:
@@ -267,13 +278,20 @@ class FAISSRetriever:
             )
 
         async with self._lock:
-            self._index = faiss.read_index(str(index_file))
+            loaded_index = faiss.read_index(str(index_file))
+            if loaded_index.d != self._dimension:
+                raise ValueError(
+                    f"Dimension mismatch: loaded index has dimension {loaded_index.d}, "
+                    f"but retriever expects {self._dimension}."
+                )
+            self._index = loaded_index
             self._metadata = json.loads(meta_file.read_text(encoding="utf-8"))
 
         logger.info(
-            "Loaded FAISS index from %s (%d vectors)",
+            "Loaded FAISS index from %s (%d vectors, dim=%d)",
             dir_path,
             self._index.ntotal,
+            self._index.d,
         )
 
     # ------------------------------------------------------------------

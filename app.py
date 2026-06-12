@@ -45,16 +45,18 @@ async def init_rag():
     # Ingest documents on startup (so the Space has data immediately)
     from app.main import run_ingestion
     try:
+        from app.rag.embeddings import EmbeddingService
         from app.rag.retrieval import FAISSRetriever
-        retriever = FAISSRetriever(dimension=settings.embed_dimension)
+        embedding_service = EmbeddingService()
+        retriever = FAISSRetriever(dimension=embedding_service.dimension)
         
-        if settings.vector_backend == "pinecone" and retriever.count > 0:
+        is_embedding_fallback = EmbeddingService._fallback_active
+        
+        if settings.vector_backend == "pinecone" and retriever.count > 0 and not is_embedding_fallback:
             logger.info("Pinecone index already populated. Skipping startup ingestion.")
-            from app.rag.embeddings import EmbeddingService
             from app.rag.generation import LLMService
             from app.services.orchestrator import RAGOrchestrator
             
-            embedding_service = EmbeddingService()
             llm_service = LLMService()
             
             orchestrator = RAGOrchestrator(
@@ -83,9 +85,9 @@ async def init_rag():
             from app.services.orchestrator import RAGOrchestrator
             
             embedding_service = EmbeddingService()
-            retriever = FAISSRetriever(dimension=settings.embed_dimension)
+            retriever = FAISSRetriever(dimension=embedding_service.dimension)
             
-            if settings.vector_backend != "pinecone":
+            if settings.vector_backend != "pinecone" or EmbeddingService._fallback_active:
                 index_path = f"{settings.index_dir}/faiss.index"
                 if not Path(index_path).exists():
                     raise FileNotFoundError("Local FAISS index not found.")
@@ -294,8 +296,7 @@ def make_ui():
                         test_emb = EmbeddingService()
                         test_emb.embed_query("test")
                     except Exception as emb_err:
-                        logger.warning("Gemini embedding API is exhausted or unavailable. Automatically falling back to MOCK mode for evaluation.", error=str(emb_err))
-                        is_mock = True
+                        logger.warning("Gemini embedding API is exhausted or unavailable. Using local fallback embeddings for evaluation.", error=str(emb_err))
                 
                 eval_questions = [
                     "What is the delivery commitment for Platinum Express?",

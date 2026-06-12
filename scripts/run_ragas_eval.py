@@ -60,6 +60,24 @@ class MockEvaluationResult:
         return self.scores[key]
 
 
+def _safe_float(val):
+    if val is None:
+        return 0.0
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        if isinstance(val, list):
+            clean_vals = []
+            for v in val:
+                try:
+                    if v is not None:
+                        clean_vals.append(float(v))
+                except (TypeError, ValueError):
+                    pass
+            return sum(clean_vals) / len(clean_vals) if clean_vals else 0.0
+        return 0.0
+
+
 async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, questions_list: list = None):
     settings = get_settings()
 
@@ -279,8 +297,22 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
     print("\n" + "=" * 80)
     print("EVALUATION RESULTS SUMMARY")
     print("=" * 80)
-    print(f"Average Faithfulness Score:  {result['faithfulness']:.4f}")
-    print(f"Average Answer Relevancy:    {result['answer_relevancy']:.4f}")
+    
+    try:
+        f_val = result['faithfulness']
+    except Exception:
+        f_val = None
+        
+    try:
+        r_val = result['answer_relevancy']
+    except Exception:
+        r_val = None
+
+    f_avg = _safe_float(f_val)
+    r_avg = _safe_float(r_val)
+
+    print(f"Average Faithfulness Score:  {f_avg:.4f}")
+    print(f"Average Answer Relevancy:    {r_avg:.4f}")
     print("-" * 80)
 
     df = result.to_pandas()
@@ -288,7 +320,9 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
     for idx, row in df.iterrows():
         print(f"\nQ: {row['user_input']}")
         print(f"A: {row['response'][:100]}...")
-        print(f"-> Faithfulness: {row['faithfulness']:.2f} | Relevancy: {row['answer_relevancy']:.2f}")
+        f_row = _safe_float(row.get('faithfulness')) if hasattr(row, 'get') else _safe_float(row['faithfulness'])
+        r_row = _safe_float(row.get('answer_relevancy')) if hasattr(row, 'get') else _safe_float(row['answer_relevancy'])
+        print(f"-> Faithfulness: {f_row:.2f} | Relevancy: {r_row:.2f}")
 
     # Save to disk
     output_dir = Path(__file__).parent.parent / "data"
@@ -300,7 +334,7 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
         json.dump(records, f, indent=2)
 
     print(f"\nResults successfully saved to data/ragas_eval_results.json")
-    return df, float(result['faithfulness']), float(result['answer_relevancy'])
+    return df, f_avg, r_avg
 
 
 if __name__ == "__main__":

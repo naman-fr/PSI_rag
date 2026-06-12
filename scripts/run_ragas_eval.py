@@ -235,7 +235,7 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
         from ragas.llms import llm_factory
         from ragas.embeddings.base import embedding_factory
         from ragas import SingleTurnSample, EvaluationDataset, aevaluate
-        from ragas.metrics.collections import Faithfulness, AnswerRelevancy
+        from ragas.metrics import Faithfulness, AnswerRelevancy
 
         # Initialize Google GenAI client for Ragas judge
         client = genai.Client(api_key=settings.gemini_api_key)

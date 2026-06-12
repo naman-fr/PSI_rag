@@ -60,6 +60,75 @@ class MockEvaluationResult:
         return self.scores[key]
 
 
+from ragas.llms.base import LangchainLLMWrapper
+
+class GroqLangchainLLMWrapper(LangchainLLMWrapper):
+    """Custom wrapper for LangChain ChatGroq to handle n > 1 constraint by executing n=1 requests in parallel."""
+    
+    def generate_text(
+        self,
+        prompt,
+        n: int = 1,
+        temperature = None,
+        stop = None,
+        callbacks = None,
+    ):
+        if n <= 1:
+            return super().generate_text(prompt, n, temperature, stop, callbacks)
+            
+        logger.info(f"GroqLangchainLLMWrapper: intercepting generate_text for n={n} and running sequentially")
+        results = [
+            super(GroqLangchainLLMWrapper, self).generate_text(
+                prompt, n=1, temperature=temperature, stop=stop, callbacks=callbacks
+            )
+            for _ in range(n)
+        ]
+        
+        combined_generations = []
+        for res in results:
+            if res.generations and len(res.generations) > 0:
+                combined_generations.extend(res.generations[0])
+                
+        from langchain_core.outputs import LLMResult
+        return LLMResult(
+            generations=[combined_generations],
+            llm_output=results[0].llm_output if results else None,
+            run=results[0].run if results else None
+        )
+
+    async def agenerate_text(
+        self,
+        prompt,
+        n: int = 1,
+        temperature = None,
+        stop = None,
+        callbacks = None,
+    ):
+        if n <= 1:
+            return await super().agenerate_text(prompt, n, temperature, stop, callbacks)
+            
+        logger.info(f"GroqLangchainLLMWrapper: intercepting agenerate_text for n={n} and running in parallel")
+        tasks = [
+            super(GroqLangchainLLMWrapper, self).agenerate_text(
+                prompt, n=1, temperature=temperature, stop=stop, callbacks=callbacks
+            )
+            for _ in range(n)
+        ]
+        results = await asyncio.gather(*tasks)
+        
+        combined_generations = []
+        for res in results:
+            if res.generations and len(res.generations) > 0:
+                combined_generations.extend(res.generations[0])
+                
+        from langchain_core.outputs import LLMResult
+        return LLMResult(
+            generations=[combined_generations],
+            llm_output=results[0].llm_output if results else None,
+            run=results[0].run if results else None
+        )
+
+
 def _safe_float(val):
     if val is None:
         return 0.0
@@ -276,13 +345,12 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
             if groq_key and groq_key != "missing-key-placeholder":
                 logger.info("Initializing Ragas judge LLM using Groq (llama-3.3-70b-versatile)...")
                 from langchain_groq import ChatGroq
-                from ragas.llms import LangchainLLMWrapper
                 chat_model = ChatGroq(
                     api_key=groq_key,
                     model="llama-3.3-70b-versatile",
                     temperature=0
                 )
-                ragas_llm = LangchainLLMWrapper(chat_model)
+                ragas_llm = GroqLangchainLLMWrapper(chat_model)
             else:
                 logger.warning("Groq API key is not configured; cannot fall back. Attempting with Gemini anyway.")
                 ragas_llm = llm_factory(

@@ -45,23 +45,67 @@ async def init_rag():
     # Ingest documents on startup (so the Space has data immediately)
     from app.main import run_ingestion
     try:
-        logger.info("Ingesting source documents on startup...")
-        result = await run_ingestion(
-            source_dir="rag_docs/rag_docs",
-            force_reindex=True
-        )
-        logger.info("Ingestion complete!", documents=result["documents_loaded"], chunks=result["chunks_indexed"])
+        from app.rag.retrieval import FAISSRetriever
+        retriever = FAISSRetriever(dimension=settings.embed_dimension)
+        
+        if settings.vector_backend == "pinecone" and retriever.count > 0:
+            logger.info("Pinecone index already populated. Skipping startup ingestion.")
+            from app.rag.embeddings import EmbeddingService
+            from app.rag.generation import LLMService
+            from app.services.orchestrator import RAGOrchestrator
+            
+            embedding_service = EmbeddingService()
+            llm_service = LLMService()
+            
+            orchestrator = RAGOrchestrator(
+                embedding_service=embedding_service,
+                retriever=retriever,
+                llm_service=llm_service,
+                cache_backend=cache_backend,
+                conversation_manager=conversation_manager,
+                summary_manager=summary_manager,
+            )
+        else:
+            logger.info("Ingesting source documents on startup...")
+            result = await run_ingestion(
+                source_dir="rag_docs/rag_docs",
+                force_reindex=True
+            )
+            logger.info("Ingestion complete!", documents=result["documents_loaded"], chunks=result["chunks_indexed"])
+            import app.main
+            orchestrator = app.main.get_orchestrator()
     except Exception as e:
-        import traceback
-        init_error = f"Ingestion Exception: {str(e)}\n{traceback.format_exc()}"
-        logger.exception("Document ingestion failed during startup", error=str(e))
-        return
-
-    # Retrieve components from app.main state
-    import app.main
-    orchestrator = app.main.get_orchestrator()
-    if not orchestrator:
-        init_error = "Orchestrator retrieved from app.main is None"
+        logger.warning(f"Startup ingestion failed: {str(e)}. Attempting to initialize with existing index as fallback...")
+        try:
+            from app.rag.embeddings import EmbeddingService
+            from app.rag.retrieval import FAISSRetriever
+            from app.rag.generation import LLMService
+            from app.services.orchestrator import RAGOrchestrator
+            
+            embedding_service = EmbeddingService()
+            retriever = FAISSRetriever(dimension=settings.embed_dimension)
+            
+            if settings.vector_backend != "pinecone":
+                index_path = f"{settings.index_dir}/faiss.index"
+                if not Path(index_path).exists():
+                    raise FileNotFoundError("Local FAISS index not found.")
+                await retriever.load_index(index_path)
+                
+            llm_service = LLMService()
+            orchestrator = RAGOrchestrator(
+                embedding_service=embedding_service,
+                retriever=retriever,
+                llm_service=llm_service,
+                cache_backend=cache_backend,
+                conversation_manager=conversation_manager,
+                summary_manager=summary_manager,
+            )
+            logger.info("Successfully initialized RAG pipeline using existing index fallback.")
+        except Exception as fallback_err:
+            import traceback
+            init_error = f"Ingestion Exception: {str(e)}\nFallback Exception: {str(fallback_err)}\n{traceback.format_exc()}"
+            logger.exception("Gradio startup initialization failed", error=str(fallback_err))
+            return
 
 # Run initialization
 try:
@@ -240,10 +284,18 @@ def make_ui():
                 
                 # Check if we should use mock mode
                 is_mock = False
-                # If keys are placeholders or not set, fall back to mock mode
                 if (settings.gemini_api_key in ["mock-gemini-key", "missing-key-placeholder", ""] or 
                     settings.groq_api_key in ["mock-groq-key", "missing-key-placeholder", ""]):
                     is_mock = True
+                else:
+                    # Test if Gemini embedding API is available
+                    try:
+                        from app.rag.embeddings import EmbeddingService
+                        test_emb = EmbeddingService()
+                        test_emb.embed_query("test")
+                    except Exception as emb_err:
+                        logger.warning("Gemini embedding API is exhausted or unavailable. Automatically falling back to MOCK mode for evaluation.", error=str(emb_err))
+                        is_mock = True
                 
                 eval_questions = [
                     "What is the delivery commitment for Platinum Express?",

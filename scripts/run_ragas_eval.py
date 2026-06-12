@@ -60,24 +60,27 @@ class MockEvaluationResult:
         return self.scores[key]
 
 
-async def run_ragas_eval(num_questions: str, mock_mode: bool = False):
+async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, questions_list: list = None):
     settings = get_settings()
 
-    # Load test questions
-    questions_path = Path(__file__).parent.parent / "tests" / "fixtures" / "test_questions.json"
-    with open(questions_path, "r", encoding="utf-8") as f:
-        all_questions = json.load(f)
-
-    # Filter/Slice questions
-    if num_questions.lower() == "all":
-        questions = all_questions
+    if questions_list:
+        questions = questions_list
     else:
-        try:
-            limit = int(num_questions)
-            questions = all_questions[:limit]
-        except ValueError:
-            print(f"Invalid value for num-questions: {num_questions}. Using default of 5.")
-            questions = all_questions[:5]
+        # Load test questions
+        questions_path = Path(__file__).parent.parent / "tests" / "fixtures" / "test_questions.json"
+        with open(questions_path, "r", encoding="utf-8") as f:
+            all_questions = json.load(f)
+
+        # Filter/Slice questions
+        if num_questions.lower() == "all":
+            questions = all_questions
+        else:
+            try:
+                limit = int(num_questions)
+                questions = all_questions[:limit]
+            except ValueError:
+                print(f"Invalid value for num-questions: {num_questions}. Using default of 5.")
+                questions = all_questions[:5]
 
     logger.info("Loaded questions for evaluation", count=len(questions), mock_mode=mock_mode)
 
@@ -202,7 +205,7 @@ async def run_ragas_eval(num_questions: str, mock_mode: bool = False):
 
     if not rag_samples:
         print("\nNo RAG retrieval queries collected. Check that your queries trigger 'retrieval' mode.")
-        return
+        return None, 0.0, 0.0
 
     print(f"\nCollected {len(rag_samples)} samples for Ragas evaluation.")
 
@@ -295,6 +298,7 @@ async def run_ragas_eval(num_questions: str, mock_mode: bool = False):
         json.dump(records, f, indent=2)
 
     print(f"\nResults successfully saved to data/ragas_eval_results.json")
+    return df, float(result['faithfulness']), float(result['answer_relevancy'])
 
 
 if __name__ == "__main__":

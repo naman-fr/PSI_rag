@@ -4,6 +4,12 @@ import asyncio
 import gradio as gr
 from pathlib import Path
 
+# Satisfy Pydantic Settings validation if keys are missing from environment
+if not os.environ.get("GROQ_API_KEY") and not os.path.exists(".env"):
+    os.environ["GROQ_API_KEY"] = "missing-key-placeholder"
+if not os.environ.get("GEMINI_API_KEY") and not os.path.exists(".env"):
+    os.environ["GEMINI_API_KEY"] = "missing-key-placeholder"
+
 # Ensure project root is in path
 sys.path.append(str(Path(__file__).parent.absolute()))
 
@@ -127,49 +133,156 @@ def make_ui():
             """
             # 🚢 PSI RAG: Production Guardrailed Self-RAG
             ### GlobalFreight Logistics Document QA Assistant
-            
-            This assistant is grounded in carrier SLA agreements, customs tariffs, and shipment delay policies.
-            It uses a 10-layer guardrail stack to prevent jailbreaks, small-talk routing, hallucination verification, and multi-level caching.
             """
         )
         
-        with gr.Row():
-            with gr.Column(scale=3):
-                chatbot = gr.Chatbot(label="Chat History")
-                msg = gr.Textbox(
-                    label="Ask a question about SLA, delay policies, or customs tariffs...",
-                    placeholder="What is the transit time for Delhi to New York under Gold standard?"
-                )
-                username = gr.Textbox(label="Username (for session isolation & memory cache)", value="guest_user")
-                clear = gr.ClearButton([msg, chatbot])
+        with gr.Tab("💬 Chat Interface"):
+            gr.Markdown(
+                """
+                This assistant is grounded in carrier SLA agreements, customs tariffs, and shipment delay policies.
+                It uses a 10-layer guardrail stack to prevent jailbreaks, small-talk routing, hallucination verification, and multi-level caching.
+                """
+            )
             
-            with gr.Column(scale=2):
-                gr.Markdown("### 🔍 Live Request Trace")
-                trace_json = gr.JSON(label="Metadata & Token Usage")
-                sources_md = gr.Markdown(label="Retrieved Source Chunks")
-        
-        # When user submits message
-        async def user_respond(message, chat_history, user):
-            if chat_history is None:
-                chat_history = []
-            bot_msg, trace = await predict(message, chat_history, user)
-            chat_history.append({"role": "user", "content": message})
-            chat_history.append({"role": "assistant", "content": bot_msg})
+            with gr.Row():
+                with gr.Column(scale=3):
+                    chatbot = gr.Chatbot(label="Chat History")
+                    msg = gr.Textbox(
+                        label="Ask a question about SLA, delay policies, or customs tariffs...",
+                        placeholder="What is the transit time for Delhi to New York under Gold standard?"
+                    )
+                    username = gr.Textbox(label="Username (for session isolation & memory cache)", value="guest_user")
+                    clear = gr.ClearButton([msg, chatbot])
+                
+                with gr.Column(scale=2):
+                    gr.Markdown("### 🔍 Live Request Trace")
+                    trace_json = gr.JSON(label="Metadata & Token Usage")
+                    sources_md = gr.Markdown(label="Retrieved Source Chunks")
             
-            # Format sources markdown
-            sources = trace.get("Retrieved Sources", [])
-            sources_text = "#### Retrieved Context:\n"
-            if not sources:
-                sources_text += "*No document chunks retrieved for this mode (direct smalltalk/refusal)*"
-            else:
-                for idx, src in enumerate(sources):
-                    sources_text += f"**Chunk {idx+1} ({src['Source']})** - Similarity: `{src['Score']:.3f}`\n"
-                    sources_text += f"> *{src['Preview']}...*\n\n"
+            # When user submits message
+            async def user_respond(message, chat_history, user):
+                if chat_history is None:
+                    chat_history = []
+                bot_msg, trace = await predict(message, chat_history, user)
+                chat_history.append({"role": "user", "content": message})
+                chat_history.append({"role": "assistant", "content": bot_msg})
+                
+                # Format sources markdown
+                sources = trace.get("Retrieved Sources", [])
+                sources_text = "#### Retrieved Context:\n"
+                if not sources:
+                    sources_text += "*No document chunks retrieved for this mode (direct smalltalk/refusal)*"
+                else:
+                    for idx, src in enumerate(sources):
+                        sources_text += f"**Chunk {idx+1} ({src['Source']})** - Similarity: `{src['Score']:.3f}`\n"
+                        sources_text += f"> *{src['Preview']}...*\n\n"
+                
+                return "", chat_history, trace, sources_text
+                
+            msg.submit(user_respond, [msg, chatbot, username], [msg, chatbot, trace_json, sources_md])
+
+        with gr.Tab("📊 Ragas Evaluation Dashboard"):
+            gr.Markdown(
+                """
+                ### Ragas RAG Pipeline Performance Metrics
+                Evaluate the factual accuracy and quality of generated responses using Google Gemini as the judge.
+                
+                - **Faithfulness**: Measures if the generated response is factually consistent and fully supported by the retrieved contexts.
+                - **Answer Relevancy**: Measures how pertinent the generated response is to the user's initial question.
+                """
+            )
             
-            return "", chat_history, trace, sources_text
+            with gr.Row():
+                with gr.Column(scale=1):
+                    run_btn = gr.Button("🚀 Run Ragas Evaluation (3 Test Cases)", variant="primary")
+                    status_txt = gr.Textbox(label="Status", value="Ready", interactive=False)
+                    
+                with gr.Column(scale=2):
+                    summary_md = gr.Markdown("### Aggregate Scores\n*No evaluation data loaded.*")
             
-        msg.submit(user_respond, [msg, chatbot, username], [msg, chatbot, trace_json, sources_md])
-        
+            df_table = gr.Dataframe(
+                headers=["user_input", "response", "faithfulness", "answer_relevancy"],
+                datatype=["str", "str", "number", "number"],
+                label="Detailed Ragas Score Breakdown"
+            )
+            
+            # Helper function to load latest results
+            def load_latest():
+                import pandas as pd
+                import json
+                results_path = Path("data/ragas_eval_results.json")
+                if results_path.exists():
+                    try:
+                        with open(results_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        if data:
+                            df = pd.DataFrame(data)
+                            f_avg = df["faithfulness"].mean()
+                            r_avg = df["answer_relevancy"].mean()
+                            summary = f"### Aggregate Scores\n- **Average Faithfulness:** `{f_avg:.4f}`\n- **Average Answer Relevancy:** `{r_avg:.4f}`"
+                            
+                            # Clean up df columns for table representation if they exist
+                            cols_to_keep = ["user_input", "response", "faithfulness", "answer_relevancy"]
+                            df_clean = df[[c for c in cols_to_keep if c in df.columns]]
+                            return df_clean, summary, "Ready (Loaded last saved results)"
+                    except Exception as e:
+                        logger.warning("Failed to load saved Ragas evaluation results: %s", str(e))
+                return pd.DataFrame(), "### Aggregate Scores\n*No evaluation data loaded. Click Run to evaluate.*", "Ready"
+            
+            # Action when Run button is clicked
+            async def trigger_evaluation():
+                import pandas as pd
+                from scripts.run_ragas_eval import run_ragas_eval
+                from app.core.config import get_settings
+                
+                settings = get_settings()
+                
+                # Check if we should use mock mode
+                is_mock = False
+                # If keys are placeholders or not set, fall back to mock mode
+                if (settings.gemini_api_key in ["mock-gemini-key", "missing-key-placeholder", ""] or 
+                    settings.groq_api_key in ["mock-groq-key", "missing-key-placeholder", ""]):
+                    is_mock = True
+                
+                eval_questions = [
+                    "What is the delivery commitment for Platinum Express?",
+                    "What compensation is given for delayed Platinum shipments?",
+                    "What is the delay tolerance for Gold Standard?"
+                ]
+                
+                status_msg = "Running Ragas evaluation in " + ("MOCK" if is_mock else "REAL") + " mode..."
+                logger.info(status_msg)
+                
+                try:
+                    df, f_avg, r_avg = await run_ragas_eval(
+                        mock_mode=is_mock,
+                        questions_list=eval_questions
+                    )
+                    
+                    if df is None:
+                        return pd.DataFrame(), "### Aggregate Scores\n*No data was collected during evaluation.*", "Error: No RAG data collected"
+                    
+                    summary = f"### Aggregate Scores ({'Mock Mode' if is_mock else 'Real Mode'})\n- **Average Faithfulness:** `{f_avg:.4f}`\n- **Average Answer Relevancy:** `{r_avg:.4f}`"
+                    
+                    cols_to_keep = ["user_input", "response", "faithfulness", "answer_relevancy"]
+                    df_clean = df[[c for c in cols_to_keep if c in df.columns]]
+                    
+                    final_status = "Evaluation completed successfully (" + ("Mock" if is_mock else "Real") + " Mode)"
+                    return df_clean, summary, final_status
+                except Exception as e:
+                    logger.exception("Evaluation action failed", error=str(e))
+                    return pd.DataFrame(), f"### Aggregate Scores\n*Evaluation failed: {str(e)}*", "Error during evaluation"
+
+            # Set load handler to load saved results
+            demo.load(load_latest, None, [df_table, summary_md, status_txt])
+            
+            # Bind click event
+            run_btn.click(
+                trigger_evaluation,
+                inputs=None,
+                outputs=[df_table, summary_md, status_txt]
+            )
+
     return demo
 
 

@@ -15,10 +15,20 @@ from pathlib import Path
 # Add project root to sys.path
 sys.path.append(str(Path(__file__).parent.parent.absolute()))
 
-# If running in mock mode, set temporary environment variables to satisfy Pydantic Settings
+# If running in mock mode or if keys are missing from environment, satisfy Pydantic Settings validation
+# so that we can check and print a clean error message inside main.
+keys_are_missing = False
+if not os.environ.get("GROQ_API_KEY") and not os.path.exists(".env"):
+    os.environ["GROQ_API_KEY"] = "missing-key-placeholder"
+    keys_are_missing = True
+if not os.environ.get("GEMINI_API_KEY") and not os.path.exists(".env"):
+    os.environ["GEMINI_API_KEY"] = "missing-key-placeholder"
+    keys_are_missing = True
+
 if "--mock" in sys.argv:
-    os.environ.setdefault("GROQ_API_KEY", "mock-groq-key")
-    os.environ.setdefault("GEMINI_API_KEY", "mock-gemini-key")
+    # Overwrite placeholders with mock keys for mock execution
+    os.environ["GROQ_API_KEY"] = "mock-groq-key"
+    os.environ["GEMINI_API_KEY"] = "mock-gemini-key"
     os.environ.setdefault("PINECONE_API_KEY", "mock-pinecone-key")
     os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 
@@ -120,11 +130,17 @@ async def run_ragas_eval(num_questions: str, mock_mode: bool = False):
         )
     else:
         # Check API Keys
-        if not settings.gemini_api_key or settings.gemini_api_key == "mock-gemini-key":
-            print("ERROR: GEMINI_API_KEY is not set. Please set it in your environment or .env file.")
-            sys.exit(1)
-        if not settings.groq_api_key or settings.groq_api_key == "mock-groq-key":
-            print("ERROR: GROQ_API_KEY is not set. Please set it in your environment or .env file.")
+        if keys_are_missing or settings.gemini_api_key == "missing-key-placeholder" or settings.groq_api_key == "missing-key-placeholder":
+            print("\n" + "=" * 80)
+            print("ERROR: REQUIRED API KEYS ARE MISSING")
+            print("=" * 80)
+            print("To run the real Ragas evaluation, you need to configure your API keys.")
+            print("Please define GROQ_API_KEY and GEMINI_API_KEY in your environment, or")
+            print("create a '.env' file in the project root with the following format:")
+            print("\nGROQ_API_KEY=your-groq-api-key")
+            print("GEMINI_API_KEY=your-google-gemini-api-key")
+            print("\nAlternatively, you can test the script plumbing in mock mode by running:")
+            print("python scripts/run_ragas_eval.py --mock\n")
             sys.exit(1)
 
         from app.rag.embeddings import EmbeddingService

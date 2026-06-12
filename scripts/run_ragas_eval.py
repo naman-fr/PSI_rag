@@ -287,10 +287,20 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
 
         dataset = EvaluationDataset(samples=samples)
 
+        from ragas.run_config import RunConfig
+
+        run_config = RunConfig(
+            max_workers=1,
+            timeout=300,
+            max_retries=10,
+            max_wait=60
+        )
+
         # Run Ragas evaluate
         result = await aevaluate(
             dataset=dataset,
-            metrics=[faithfulness_metric, answer_relevancy_metric]
+            metrics=[faithfulness_metric, answer_relevancy_metric],
+            run_config=run_config
         )
 
     # Display results

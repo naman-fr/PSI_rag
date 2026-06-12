@@ -235,7 +235,7 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
         from ragas.llms import llm_factory
         from ragas.embeddings.base import embedding_factory
         from ragas import SingleTurnSample, EvaluationDataset, aevaluate
-        from ragas.metrics.collections import faithfulness, answer_relevancy
+        from ragas.metrics.collections import Faithfulness, AnswerRelevancy
 
         # Initialize Google GenAI client for Ragas judge
         client = genai.Client(api_key=settings.gemini_api_key)
@@ -251,6 +251,10 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
             client=client,
             model="text-embedding-004"
         )
+
+        # Instantiate metrics with proper dependencies
+        faithfulness_metric = Faithfulness(llm=ragas_llm)
+        answer_relevancy_metric = AnswerRelevancy(llm=ragas_llm, embeddings=ragas_embeddings)
 
         # Convert to Ragas SingleTurnSamples
         samples = []
@@ -268,9 +272,7 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
         # Run Ragas evaluate
         result = await aevaluate(
             dataset=dataset,
-            metrics=[faithfulness, answer_relevancy],
-            llm=ragas_llm,
-            embeddings=ragas_embeddings
+            metrics=[faithfulness_metric, answer_relevancy_metric]
         )
 
     # Display results

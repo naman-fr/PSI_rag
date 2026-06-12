@@ -18,3 +18,4 @@ ragas>=0.4.3
 langchain-community==0.4.1
 langchain-google-vertexai
 jsonref
+langchain-groq

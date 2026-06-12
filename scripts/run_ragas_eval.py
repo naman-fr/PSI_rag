@@ -143,6 +143,12 @@ class RagasEmbeddingWrapper(BaseRagasEmbeddings):
         vecs = self.embedding_service.embed_documents(texts)
         return [[float(x) for x in v] for v in vecs]
 
+    async def aembed_query(self, text: str) -> list[float]:
+        return await asyncio.to_thread(self.embed_query, text)
+
+    async def aembed_documents(self, texts: list[str]) -> list[list[float]]:
+        return await asyncio.to_thread(self.embed_documents, texts)
+
 
 def _safe_float(val):
     if val is None:
@@ -162,7 +168,7 @@ def _safe_float(val):
         return 0.0
 
 
-async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, questions_list: list = None):
+async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, questions_list: list = None, orchestrator_instance = None):
     settings = get_settings()
 
     if questions_list:
@@ -186,93 +192,98 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
 
     logger.info("Loaded questions for evaluation", count=len(questions), mock_mode=mock_mode)
 
-    # Initialize local RAG components
-    from app.cache.redis_client import InMemoryCache
-    from app.memory.conversation import ConversationManager
-    from app.memory.summary import SummaryManager
-    from app.rag.retrieval import FAISSRetriever
-    from app.services.orchestrator import RAGOrchestrator
-
-    cache = InMemoryCache()
-    conv_mgr = ConversationManager(cache)
-    sum_mgr = SummaryManager(cache)
-
-    if mock_mode:
-        from unittest.mock import AsyncMock, MagicMock
-        import numpy as np
-
-        # Mock embedding service
-        embedding_service = MagicMock()
-        mock_vec = np.zeros(settings.embed_dimension, dtype=np.float32)
-        embedding_service.embed_query.return_value = mock_vec
-        embedding_service.embed_documents.return_value = [mock_vec]
-
-        # Mock retriever
-        retriever = MagicMock(spec=FAISSRetriever)
-        retriever.search.return_value = [
-            {
-                "score": 0.95,
-                "text": "Gold tier delay tolerance is 12 hours. Compensation is 10% refund of freight charges for each 24-hour block.",
-                "metadata": {"source": "DOC1_carrier_sla_agreement.md"},
-            },
-            {
-                "score": 0.88,
-                "text": "Platinum Express delay tolerance is 4 hours. Compensation is 15% refund of freight charges for each 24-hour block.",
-                "metadata": {"source": "DOC1_carrier_sla_agreement.md"},
-            },
-            {
-                "score": 0.85,
-                "text": "Category 2 significant delay is 4 to 24 hours. Action: update ETA, notify customer, agent proactive outreach within 1 hour.",
-                "metadata": {"source": "DOC3_shipment_delay_policy.md"},
-            }
-        ]
-
-        # Mock LLM
-        llm_service = AsyncMock()
-        llm_service.generate.return_value = (
-            "Based on the provided context, the delay tolerance for Gold is 12 hours (10% refund per 24h) and Platinum is 4 hours (15% refund per 24h). Under 15 hours delay (Category 2 significant delay), we must updates ETA, notify customer, and perform proactive agent outreach for Platinum within 1 hour.",
-            {"prompt_tokens": 120, "completion_tokens": 60, "total_tokens": 180},
-        )
+    if orchestrator_instance and not mock_mode:
+        logger.info("Using active orchestrator instance from Gradio app context.")
+        orchestrator = orchestrator_instance
+        embedding_service = orchestrator.embedding_service
     else:
-        # Check API Keys
-        if keys_are_missing or settings.gemini_api_key == "missing-key-placeholder" or settings.groq_api_key == "missing-key-placeholder":
-            print("\n" + "=" * 80)
-            print("ERROR: REQUIRED API KEYS ARE MISSING")
-            print("=" * 80)
-            print("To run the real Ragas evaluation, you need to configure your API keys.")
-            print("Please define GROQ_API_KEY and GEMINI_API_KEY in your environment, or")
-            print("create a '.env' file in the project root with the following format:")
-            print("\nGROQ_API_KEY=your-groq-api-key")
-            print("GEMINI_API_KEY=your-google-gemini-api-key")
-            print("\nAlternatively, you can test the script plumbing in mock mode by running:")
-            print("python scripts/run_ragas_eval.py --mock\n")
-            sys.exit(1)
+        # Initialize local RAG components
+        from app.cache.redis_client import InMemoryCache
+        from app.memory.conversation import ConversationManager
+        from app.memory.summary import SummaryManager
+        from app.rag.retrieval import FAISSRetriever
+        from app.services.orchestrator import RAGOrchestrator
 
-        from app.rag.embeddings import EmbeddingService
-        from app.rag.generation import LLMService
+        cache = InMemoryCache()
+        conv_mgr = ConversationManager(cache)
+        sum_mgr = SummaryManager(cache)
 
-        embedding_service = EmbeddingService()
-        retriever = FAISSRetriever(dimension=settings.embed_dimension)
+        if mock_mode:
+            from unittest.mock import AsyncMock, MagicMock
+            import numpy as np
 
-        # Load FAISS index
-        index_path = f"{settings.index_dir}/faiss.index"
-        if not Path(index_path).exists():
-            logger.info("FAISS index not found. Running ingestion first...")
-            from app.main import run_ingestion
-            await run_ingestion(source_dir=settings.docs_dir)
+            # Mock embedding service
+            embedding_service = MagicMock()
+            mock_vec = np.zeros(settings.embed_dimension, dtype=np.float32)
+            embedding_service.embed_query.return_value = mock_vec
+            embedding_service.embed_documents.return_value = [mock_vec]
+
+            # Mock retriever
+            retriever = MagicMock(spec=FAISSRetriever)
+            retriever.search.return_value = [
+                {
+                    "score": 0.95,
+                    "text": "Gold tier delay tolerance is 12 hours. Compensation is 10% refund of freight charges for each 24-hour block.",
+                    "metadata": {"source": "DOC1_carrier_sla_agreement.md"},
+                },
+                {
+                    "score": 0.88,
+                    "text": "Platinum Express delay tolerance is 4 hours. Compensation is 15% refund of freight charges for each 24-hour block.",
+                    "metadata": {"source": "DOC1_carrier_sla_agreement.md"},
+                },
+                {
+                    "score": 0.85,
+                    "text": "Category 2 significant delay is 4 to 24 hours. Action: update ETA, notify customer, agent proactive outreach within 1 hour.",
+                    "metadata": {"source": "DOC3_shipment_delay_policy.md"},
+                }
+            ]
+
+            # Mock LLM
+            llm_service = AsyncMock()
+            llm_service.generate.return_value = (
+                "Based on the provided context, the delay tolerance for Gold is 12 hours (10% refund per 24h) and Platinum is 4 hours (15% refund per 24h). Under 15 hours delay (Category 2 significant delay), we must updates ETA, notify customer, and perform proactive agent outreach for Platinum within 1 hour.",
+                {"prompt_tokens": 120, "completion_tokens": 60, "total_tokens": 180},
+            )
         else:
-            await retriever.load_index(index_path)
+            # Check API Keys
+            if keys_are_missing or settings.gemini_api_key == "missing-key-placeholder" or settings.groq_api_key == "missing-key-placeholder":
+                print("\n" + "=" * 80)
+                print("ERROR: REQUIRED API KEYS ARE MISSING")
+                print("=" * 80)
+                print("To run the real Ragas evaluation, you need to configure your API keys.")
+                print("Please define GROQ_API_KEY and GEMINI_API_KEY in your environment, or")
+                print("create a '.env' file in the project root with the following format:")
+                print("\nGROQ_API_KEY=your-groq-api-key")
+                print("GEMINI_API_KEY=your-google-gemini-api-key")
+                print("\nAlternatively, you can test the script plumbing in mock mode by running:")
+                print("python scripts/run_ragas_eval.py --mock\n")
+                sys.exit(1)
 
-        llm_service = LLMService()
+            from app.rag.embeddings import EmbeddingService
+            from app.rag.generation import LLMService
 
-    orchestrator = RAGOrchestrator(
-        embedding_service=embedding_service,
-        retriever=retriever,
-        llm_service=llm_service,
-        cache_backend=cache,
-        conversation_manager=conv_mgr,
-        summary_manager=sum_mgr,
-    )
+            embedding_service = EmbeddingService()
+            retriever = FAISSRetriever(dimension=settings.embed_dimension)
+
+            # Load FAISS index
+            index_path = f"{settings.index_dir}/faiss.index"
+            if not Path(index_path).exists():
+                logger.info("FAISS index not found. Running ingestion first...")
+                from app.main import run_ingestion
+                await run_ingestion(source_dir=settings.docs_dir)
+            else:
+                await retriever.load_index(index_path)
+
+            llm_service = LLMService()
+
+        orchestrator = RAGOrchestrator(
+            embedding_service=embedding_service,
+            retriever=retriever,
+            llm_service=llm_service,
+            cache_backend=cache,
+            conversation_manager=conv_mgr,
+            summary_manager=sum_mgr,
+        )
 
     rag_samples = []
     print("\n" + "=" * 80)
@@ -416,6 +427,7 @@ async def run_ragas_eval(num_questions: str = "5", mock_mode: bool = False, ques
         result = await aevaluate(
             dataset=dataset,
             metrics=[faithfulness_metric, answer_relevancy_metric, context_precision_metric],
+            embeddings=ragas_embeddings,
             run_config=run_config
         )
 

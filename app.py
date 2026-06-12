@@ -257,7 +257,8 @@ def make_ui():
                 try:
                     df, f_avg, r_avg, c_avg = await run_ragas_eval(
                         mock_mode=is_mock,
-                        questions_list=eval_questions
+                        questions_list=eval_questions,
+                        orchestrator_instance=orchestrator
                     )
                     
                     if df is None:

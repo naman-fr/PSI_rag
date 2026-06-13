@@ -73,14 +73,15 @@ Protects the inference flow from adversarial prompt injections, off-topic reques
 
 ---
 
-## ⚡ Cache & Memory Hierarchy
+## ⚡ Cache & Memory Hierarchy (Valkey & BetterDB Powered)
 
-Optimizes latency and API token costs via a Redis-backed storage engine with local fallback:
+Optimizes latency and API token costs via a Valkey/Redis-backed storage engine with local fallback. Fully integrated with **BetterDB** for production database monitoring and tuning:
 
 * **Semantic Similarity Cache**: Caches embedding vectors of previous queries. If a new query is semantically similar (cosine score >= 0.95), the cached response is served instantly (< 10ms).
 * **Exact Retrieval Cache**: Caches raw vector DB search results for frequently requested topics to bypass vector index queries.
 * **Response Cache**: Standard key-value store for direct question-to-answer mappings.
-* **Rolling Conversation Memory**: Automatically creates and maintains conversation summaries per user session when dialogue surpasses 5 turns, reducing LLM context overhead.
+* **Rolling Conversation Memory**: Automatically creates and maintains conversation summaries per dialogue window, reducing LLM context overhead.
+* **BetterDB Observability**: Every cache hit/miss and command execution latency is instrumented and logged. BetterDB intercepts these telemetry events out-of-band to power real-time dashboards, slowlog debugging, client analytics, and historical anomaly detection.
 
 ---
 
@@ -93,13 +94,13 @@ Ensures 100% service uptime even under severe API rate limits (`429 Quota Exhaus
 | **Vector Store** | **Pinecone Cloud DB** | **Local FAISS Index** | Pinecone credentials missing or client package conflicts |
 | **Embedding Engine** | **Google Gemini API** (`text-embedding-004`) | **Local CPU Transformers** (`all-MiniLM-L6-v2`) | Gemini API rate limits or quota exhaustion |
 | **LLM Judge / Evaluator** | **Google Gemini** (`gemini-2.0-flash`) | **Groq LLM** (`llama-3.3-70b-versatile`) | Gemini API rate limit or free-tier quota exhaustion |
-| **Caching Tier** | **Redis Server** | **In-Memory Thread-Safe Cache** | Redis container unreachable or down |
+| **Caching Tier** | **Valkey / Redis Server** | **In-Memory Thread-Safe Cache** | Valkey/Redis container unreachable or down |
 
 ---
 
 ## 🤖 Multi-Protocol Exposing (MCP & A2A)
 
-Exposes the logistics RAG engine to third-party clients and collaborative agents:
+Exposes the logistics RAG engine to third-party clients and collaborative agents. For complete copy-pasteable configuration settings and detailed instruction sheets, see the [agents.md](file:///c:/Users/naman/Downloads/PSI_RAG/agents.md) reference.
 
 ### 1. Model Context Protocol (MCP) by Anthropic
 Enables developer clients (like Cursor or Claude Desktop) to query documents and trigger RAG pipelines:

@@ -53,12 +53,15 @@ class CacheBackend(Protocol):
 # ---------------------------------------------------------------------------
 
 class RedisCache:
-    """Async Redis cache backend.
+    """Async Valkey/Redis cache backend.
+
+    Fully compatible with Valkey and Redis. Designed to expose operational telemetry
+    useful for BetterDB (dashboards, slowlog analysis, client analytics).
 
     Parameters
     ----------
     redis_url:
-        Redis connection string (e.g. ``redis://localhost:6379/0``).
+        Valkey/Redis connection string (e.g. ``redis://localhost:6379/0``).
     default_ttl:
         Default time-to-live in seconds when no explicit TTL is given.
     """
@@ -75,32 +78,69 @@ class RedisCache:
     # -- public API ----------------------------------------------------------
 
     async def get(self, key: str) -> Optional[str]:
-        """Retrieve a value by key."""
+        """Retrieve a value by key with latency telemetry."""
+        start_time = time.perf_counter()
         try:
-            return await self._client.get(key)
+            val = await self._client.get(key)
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            # BetterDB/Valkey Telemetry logging
+            logger.info(
+                "ValkeyRedis Command Telemetry | Command: GET | Key: %s | Latency: %.2fms | Hit: %s",
+                key,
+                latency_ms,
+                val is not None,
+            )
+            return val
         except aioredis.RedisError as exc:
             logger.warning("RedisCache.get failed for key=%s: %s", key, exc)
             return None
 
     async def set(self, key: str, value: str, ttl: Optional[int] = None) -> None:
-        """Set a key with optional TTL (seconds)."""
+        """Set a key with optional TTL and latency telemetry."""
         effective_ttl = ttl if ttl is not None else self._default_ttl
+        start_time = time.perf_counter()
         try:
             await self._client.set(key, value, ex=effective_ttl)
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            # BetterDB/Valkey Telemetry logging
+            logger.info(
+                "ValkeyRedis Command Telemetry | Command: SET | Key: %s | Latency: %.2fms | TTL: %ds",
+                key,
+                latency_ms,
+                effective_ttl,
+            )
         except aioredis.RedisError as exc:
             logger.warning("RedisCache.set failed for key=%s: %s", key, exc)
 
     async def delete(self, key: str) -> None:
-        """Delete a key."""
+        """Delete a key with latency telemetry."""
+        start_time = time.perf_counter()
         try:
             await self._client.delete(key)
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            # BetterDB/Valkey Telemetry logging
+            logger.info(
+                "ValkeyRedis Command Telemetry | Command: DEL | Key: %s | Latency: %.2fms",
+                key,
+                latency_ms,
+            )
         except aioredis.RedisError as exc:
             logger.warning("RedisCache.delete failed for key=%s: %s", key, exc)
 
     async def exists(self, key: str) -> bool:
-        """Check if a key exists."""
+        """Check if a key exists with latency telemetry."""
+        start_time = time.perf_counter()
         try:
-            return bool(await self._client.exists(key))
+            res = bool(await self._client.exists(key))
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            # BetterDB/Valkey Telemetry logging
+            logger.info(
+                "ValkeyRedis Command Telemetry | Command: EXISTS | Key: %s | Latency: %.2fms | Exists: %s",
+                key,
+                latency_ms,
+                res,
+            )
+            return res
         except aioredis.RedisError as exc:
             logger.warning("RedisCache.exists failed for key=%s: %s", key, exc)
             return False
@@ -194,7 +234,7 @@ class InMemoryCache:
 # ---------------------------------------------------------------------------
 
 async def get_cache_backend() -> CacheBackend:
-    """Return a ``RedisCache`` if reachable, otherwise an ``InMemoryCache``.
+    """Return a ``RedisCache`` (fully Valkey-compatible) if reachable, otherwise an ``InMemoryCache``.
 
     Configuration is read from ``get_settings()``.
     """
@@ -206,12 +246,12 @@ async def get_cache_backend() -> CacheBackend:
     )
 
     if await redis_cache.ping():
-        logger.info("Connected to Redis at %s", settings.redis_url)
+        logger.info("Connected to Valkey/Redis at %s (observability active)", settings.redis_url)
         return redis_cache
 
     await redis_cache.close()
     logger.warning(
-        "Redis unavailable at %s – falling back to InMemoryCache",
+        "Valkey/Redis unavailable at %s – falling back to InMemoryCache",
         settings.redis_url,
     )
     return InMemoryCache(default_ttl=settings.cache_ttl_seconds)

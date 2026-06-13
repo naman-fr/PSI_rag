@@ -182,11 +182,21 @@ def create_app() -> FastAPI:
     )
 
     # Register routers
-    from app.routers import chat, ingest, admin
+    from app.routers import chat, ingest, admin, mcp, a2a
 
     app.include_router(chat.router)
     app.include_router(ingest.router)
     app.include_router(admin.router)
+    app.include_router(mcp.router, prefix="/api/v1")
+    app.include_router(a2a.router, prefix="/api/v1")
+
+    # Mount MCP SSE messages handler directly on app
+    app.mount("/api/v1/mcp/messages", mcp.sse.handle_post_message)
+
+    @app.get("/.well-known/agent-card.json")
+    async def get_well_known_agent_card():
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/api/v1/a2a/agent-card")
 
     return app
 

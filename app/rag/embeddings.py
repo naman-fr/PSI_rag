@@ -47,8 +47,8 @@ class EmbeddingService:
                     logger.info("Gemini embedding API is available.")
                 except Exception as e:
                     logger.warning(
-                        "Gemini embedding API test failed. Falling back to local embeddings.",
-                        error=str(e),
+                        "Gemini embedding API test failed: %s. Falling back to local embeddings.",
+                        str(e),
                     )
                     EmbeddingService._fallback_active = True
 

@@ -47,10 +47,16 @@ class FAISSRetriever:
         
         # Check if local fallback is active in EmbeddingService
         from app.rag.embeddings import EmbeddingService
-        emb_service = EmbeddingService()
-        
-        if EmbeddingService._fallback_active:
-            self._dimension = dimension if dimension is not None else emb_service.dimension
+        if EmbeddingService._fallback_active is not None:
+            fallback_active = EmbeddingService._fallback_active
+        elif dimension is not None:
+            fallback_active = False
+        else:
+            emb_service = EmbeddingService()
+            fallback_active = EmbeddingService._fallback_active
+
+        if fallback_active:
+            self._dimension = dimension if dimension is not None else 384
             self._backend = "faiss"
             logger.info("EmbeddingService fallback is active. Overriding retriever to local FAISS with dimension %d.", self._dimension)
         else:
@@ -76,7 +82,7 @@ class FAISSRetriever:
                         importlib.invalidate_caches()
                         from pinecone import Pinecone
                     except Exception as ex:
-                        logger.exception("Failed to programmatically fix pinecone packages", error=str(ex))
+                        logger.exception("Failed to programmatically fix pinecone packages: %s", str(ex))
                         raise e
                 else:
                     raise e

@@ -20,7 +20,7 @@ Production-grade, document-grounded Self-RAG QA assistant for GlobalFreight Logi
 
 The Gradio web interface features a side-by-side chat console and a **Request Trace** panel, providing real-time transparency into routing decisions, verifier confidence scores, and vector backends:
 
-![PSI RAG Live UI Dashboard Mockup](docs/images/mcp_a2a_rag_dashboard.png)
+![PSI RAG Live UI Dashboard Mockup](https://raw.githubusercontent.com/naman-fr/PSI_rag/main/docs/images/mcp_a2a_rag_dashboard.png)
 
 ---
 

@@ -28,6 +28,8 @@ The Gradio web interface features a side-by-side chat console and a **Request Tr
 
 The core pipeline processes queries asynchronously through a strict multi-layer execution pipeline:
 
+![PSI RAG Core Architecture Flowchart](https://raw.githubusercontent.com/naman-fr/PSI_rag/main/docs/images/rag_pipeline_architecture.png)
+
 ```mermaid
 graph TD
     A[User Query] --> B[Input Guardrail: Sanitisation & Injection check]
@@ -60,6 +62,8 @@ graph TD
 
 Protects the inference flow from adversarial prompt injections, off-topic requests, and hallucinated responses:
 
+![PSI RAG 10-Layer Guardrail Stack Flowchart](https://raw.githubusercontent.com/naman-fr/PSI_rag/main/docs/images/rag_guardrails_stack.png)
+
 1. **Input Length Validation**: Limits input payloads to prevent buffer overflows or denial-of-service vector attacks.
 2. **Text Sanitisation**: Strips dangerous ASCII null bytes, control codes, and malicious scripts.
 3. **Prompt Injection Guard**: Uses regular expression classifiers targeting jailbreak strings (e.g. `"ignore all instructions"`, `"act as if"`).
@@ -76,6 +80,8 @@ Protects the inference flow from adversarial prompt injections, off-topic reques
 ## ⚡ Cache & Memory Hierarchy (Valkey & BetterDB Powered)
 
 Optimizes latency and API token costs via a Valkey/Redis-backed storage engine with local fallback. Fully integrated with **BetterDB** for production database monitoring and tuning:
+
+![PSI RAG Caching and Memory Hierarchy Infographic](https://raw.githubusercontent.com/naman-fr/PSI_rag/main/docs/images/rag_cache_memory_hierarchy.png)
 
 * **Semantic Similarity Cache**: Caches embedding vectors of previous queries. If a new query is semantically similar (cosine score >= 0.95), the cached response is served instantly (< 10ms).
 * **Exact Retrieval Cache**: Caches raw vector DB search results for frequently requested topics to bypass vector index queries.
